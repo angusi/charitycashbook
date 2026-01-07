@@ -1,0 +1,75 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Category Analysis - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Category Analysis</h1>
+    <p class="text-sm text-gray-500">{{ charity.name }}</p>
+</div>
+
+{% include 'components/report_date_picker.html.twig' with {show_type: true} %}
+
+<!-- Category Breakdown -->
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Count</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">% of Total</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% set grand_total = 0 %}
+            {% for cat in report.categories %}
+                {% set grand_total = grand_total + cat.total %}
+            {% endfor %}
+            
+            {% for cat in report.categories %}
+                <tr>
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ cat.name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{{ cat.count }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right {{ type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
+                        £{{ cat.total|number_format(2) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                        {% if grand_total > 0 %}
+                            {{ ((cat.total / grand_total) * 100)|number_format(1) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4" class="px-6 py-8 text-center text-gray-500">No transactions found</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        {% if report.categories|length > 0 %}
+        <tfoot class="bg-gray-50">
+            <tr class="font-semibold">
+                <td class="px-6 py-4 text-sm text-gray-900">Total</td>
+                <td class="px-6 py-4 text-sm text-right text-gray-500">
+                    {% set total_count = 0 %}
+                    {% for cat in report.categories %}
+                        {% set total_count = total_count + cat.count %}
+                    {% endfor %}
+                    {{ total_count }}
+                </td>
+                <td class="px-6 py-4 text-sm text-right {{ type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
+                    £{{ grand_total|number_format(2) }}
+                </td>
+                <td class="px-6 py-4 text-sm text-right text-gray-500">100%</td>
+            </tr>
+        </tfoot>
+        {% endif %}
+    </table>
+</div>
+
+<div class="mt-4">
+    <a href="/charity/{{ charity.id }}/reports" class="text-sm text-blue-600 hover:text-blue-800">← Back to Reports</a>
+</div>
+{% endblock %}

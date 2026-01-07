@@ -1,0 +1,86 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Select Charity - {{ parent() }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Select Charity</h1>
+
+    {% if charities is empty and suspended_charities is empty %}
+        <div class="bg-white shadow rounded-lg p-8 text-center">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <h3 class="mt-2 text-lg font-medium text-gray-900">No charities available</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                You don't have access to any charities yet. Contact your charity administrator to get access.
+            </p>
+        </div>
+    {% else %}
+        {% if charities is not empty %}
+        <div class="bg-white shadow rounded-lg divide-y divide-gray-200">
+            {% for charity in charities %}
+                <div class="p-6 hover:bg-gray-50">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">{{ charity.name }}</h3>
+                            {% if charity.charity_number %}
+                                <p class="text-sm text-gray-500">Charity No: {{ charity.charity_number }}</p>
+                            {% endif %}
+                            <p class="text-sm text-gray-500">
+                                Your role: 
+                                <span class="font-medium capitalize">{{ charity.role }}</span>
+                            </p>
+                        </div>
+                        <div>
+                            <a href="/charities/{{ charity.id }}/enter" 
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                Enter
+                                <svg class="ml-2 -mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if suspended_charities is not empty %}
+        <div class="mt-8">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Suspended Charities</h2>
+            <div class="bg-gray-50 border border-gray-200 rounded-lg divide-y divide-gray-200">
+                {% for charity in suspended_charities %}
+                    <div class="p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-medium text-gray-500">{{ charity.name }}</h3>
+                                {% if charity.charity_number %}
+                                    <p class="text-sm text-gray-400">Charity No: {{ charity.charity_number }}</p>
+                                {% endif %}
+                                <p class="text-sm text-gray-400">
+                                    Your role: 
+                                    <span class="font-medium capitalize">{{ charity.role }}</span>
+                                </p>
+                            </div>
+                            <div>
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                                    <svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    Suspended
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+                These charities have been suspended by the service administrator. Contact support for more information.
+            </p>
+        </div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

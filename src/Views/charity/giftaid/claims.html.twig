@@ -1,0 +1,74 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Gift Aid Claims - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Gift Aid Claims</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    <div class="space-x-2">
+        <a href="/charity/{{ charity.id }}/giftaid" class="text-sm text-blue-600 hover:text-blue-800">← Back to Gift Aid</a>
+        {% if permissions.giftaid_manage_claims %}
+            <a href="/charity/{{ charity.id }}/giftaid/claims/create" 
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                + New Claim
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Donations</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">GA Value</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% if claims is empty %}
+                <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                        No claims yet
+                    </td>
+                </tr>
+            {% else %}
+                {% for claim in claims %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ claim.period_start }} - {{ claim.period_end }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if claim.status == 'submitted' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Submitted</span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Draft</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                            £{{ claim.total_donations|number_format(2) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-green-600">
+                            £{{ claim.total_giftaid|number_format(2) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ claim.submitted_date ?: '-' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}" class="text-blue-600 hover:text-blue-900">View</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

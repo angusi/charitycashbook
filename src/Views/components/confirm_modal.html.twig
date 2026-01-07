@@ -1,0 +1,127 @@
+{# 
+    Confirmation Modal Component
+    
+    Usage: Include this component and call showConfirmModal() from JavaScript
+    
+    Example:
+    <button type="button" onclick="showConfirmModal('Delete this item?', 'This action cannot be undone.', function() { document.getElementById('delete-form').submit(); })">
+        Delete
+    </button>
+    
+    Or for form submissions:
+    <form id="my-form" method="post" action="/delete">
+        <button type="button" onclick="showConfirmModal('Delete?', 'Are you sure?', function() { document.getElementById('my-form').submit(); })">
+            Delete
+        </button>
+    </form>
+#}
+
+<div id="confirm-modal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+        <div class="px-6 py-4">
+            <div class="flex items-start">
+                <div class="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-red-100 mr-4">
+                    <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900" id="confirm-modal-title">Confirm Action</h3>
+                    <p class="mt-1 text-sm text-gray-500" id="confirm-modal-message">Are you sure you want to continue?</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-gray-50 flex justify-end space-x-3 rounded-b-lg">
+            <button type="button" id="confirm-modal-cancel"
+                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Cancel
+            </button>
+            <button type="button" id="confirm-modal-confirm"
+                    class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                Confirm
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var confirmCallback = null;
+    var modal = document.getElementById('confirm-modal');
+    var titleEl = document.getElementById('confirm-modal-title');
+    var messageEl = document.getElementById('confirm-modal-message');
+    var cancelBtn = document.getElementById('confirm-modal-cancel');
+    var confirmBtn = document.getElementById('confirm-modal-confirm');
+
+    function hideModal() {
+        modal.classList.add('hidden');
+        confirmCallback = null;
+    }
+
+    function doConfirm() {
+        if (confirmCallback) {
+            confirmCallback();
+        }
+        hideModal();
+    }
+
+    // Cancel button
+    cancelBtn.addEventListener('click', hideModal);
+
+    // Confirm button
+    confirmBtn.addEventListener('click', doConfirm);
+
+    // Escape key closes, Enter key confirms
+    document.addEventListener('keydown', function(e) {
+        if (modal.classList.contains('hidden')) return;
+        
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            hideModal();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            doConfirm();
+        }
+    });
+
+    // Click outside to close
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            hideModal();
+        }
+    });
+
+    // Global function to show the modal
+    window.showConfirmModal = function(title, message, callback, options) {
+        options = options || {};
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        confirmCallback = callback;
+        
+        // Allow customizing button text and style
+        if (options.confirmText) {
+            confirmBtn.textContent = options.confirmText;
+        } else {
+            confirmBtn.textContent = 'Confirm';
+        }
+        
+        if (options.confirmClass) {
+            confirmBtn.className = options.confirmClass;
+        } else {
+            confirmBtn.className = 'px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500';
+        }
+        
+        modal.classList.remove('hidden');
+        confirmBtn.focus();
+    };
+
+    // Helper for form submissions
+    window.confirmAndSubmit = function(formId, title, message) {
+        showConfirmModal(title, message, function() {
+            document.getElementById(formId).submit();
+        });
+        return false;
+    };
+})();
+</script>

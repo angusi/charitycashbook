@@ -1,0 +1,102 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Edit User - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Edit User</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="mb-6">
+            <h2 class="text-lg font-medium text-gray-900">{{ edit_user.display_name }}</h2>
+            <p class="text-sm text-gray-500">{{ edit_user.user_email }}</p>
+            {% if edit_user.role == 'pending' %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mt-2">
+                    Awaiting Approval
+                </span>
+            {% endif %}
+        </div>
+
+        <form method="post" action="/charity/{{ charity.id }}/settings/users/{{ edit_user.user_id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div class="space-y-6">
+                <div>
+                    <label for="role" class="block text-sm font-medium text-gray-700">Role</label>
+                    <select name="role" id="role"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        {% for role_name, role_display in roles %}
+                            <option value="{{ role_name }}" {{ edit_user.role == role_name ? 'selected' : '' }}>
+                                {{ role_display }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">
+                        The role determines what this user can do. See permissions breakdown below.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="is_active" value="1" {{ edit_user.is_active ? 'checked' : '' }}
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-700">User is active</span>
+                    </label>
+                    <p class="mt-1 text-xs text-gray-500">Inactive users cannot access this charity</p>
+                </div>
+
+                <!-- Permission Groups -->
+                <div class="border-t border-gray-200 pt-6">
+                    <h3 class="text-sm font-medium text-gray-900 mb-4">Effective Permissions</h3>
+                    <p class="text-xs text-gray-500 mb-4">
+                        These are the permissions this user currently has based on their role. 
+                        Permissions can be customized per-user, but this typically isn't necessary.
+                    </p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {% for group_name, group_permissions in permission_groups %}
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-gray-700 mb-3">{{ group_name }}</h4>
+                                <div class="space-y-2">
+                                    {% for perm in group_permissions %}
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-gray-600">{{ permission_definitions[perm] }}</span>
+                                            {% if effective_permissions[perm] %}
+                                                <span class="text-green-600">
+                                                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </span>
+                                            {% else %}
+                                                <span class="text-gray-300">
+                                                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-3">
+                <a href="/charity/{{ charity.id }}/settings/users" 
+                   class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

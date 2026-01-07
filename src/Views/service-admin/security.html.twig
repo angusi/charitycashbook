@@ -1,0 +1,291 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Security Investigation - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <nav class="text-sm text-gray-500 mb-2">
+            <a href="/service-admin" class="hover:text-gray-700">Service Admin</a> /
+            <span class="text-gray-900">Security</span>
+        </nav>
+        <h1 class="text-2xl font-bold text-gray-900">Security Investigation</h1>
+        <p class="text-sm text-gray-500">Investigate suspicious login activity</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <!-- Time Range Filter -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <form method="get" class="flex items-center gap-4">
+            {% if ip %}
+                <input type="hidden" name="ip" value="{{ ip }}">
+            {% endif %}
+            {% if email %}
+                <input type="hidden" name="email" value="{{ email }}">
+            {% endif %}
+            <label class="text-sm text-gray-700">Time range:</label>
+            <select name="hours" onchange="this.form.submit()" class="rounded-md border-gray-300 text-sm">
+                <option value="1" {{ hours == 1 ? 'selected' : '' }}>Last hour</option>
+                <option value="6" {{ hours == 6 ? 'selected' : '' }}>Last 6 hours</option>
+                <option value="24" {{ hours == 24 ? 'selected' : '' }}>Last 24 hours</option>
+                <option value="48" {{ hours == 48 ? 'selected' : '' }}>Last 48 hours</option>
+                <option value="168" {{ hours == 168 ? 'selected' : '' }}>Last 7 days</option>
+            </select>
+            {% if ip or email %}
+                <a href="/service-admin/security" class="text-sm text-blue-600 hover:text-blue-800">← Back to overview</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if ip %}
+        <!-- Investigating specific IP -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">IP Address: {{ ip }}</h2>
+                <p class="text-sm text-gray-500">{{ login_attempts|length }} login attempt(s) in last {{ hours }} hour(s)</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Result</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for attempt in login_attempts %}
+                            <tr>
+                                <td class="px-4 py-3 text-sm text-gray-900">{{ attempt.created_at }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-900">{{ attempt.oauth_email|default('—') }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500">{{ attempt.provider_type|default('—') }}</td>
+                                <td class="px-4 py-3">
+                                    {% if attempt.success %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Success</span>
+                                    {% else %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Failed</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    {% if attempt.oauth_email %}
+                                        <a href="/service-admin/security?email={{ attempt.oauth_email|url_encode }}" class="text-blue-600 hover:text-blue-800">View account</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="px-4 py-8 text-center text-gray-500">No login attempts from this IP</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    {% elseif email %}
+        <!-- Investigating specific email/account -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <!-- Account Info -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Account</h2>
+                </div>
+                <div class="p-6">
+                    {% if target_user %}
+                        <dl class="space-y-3">
+                            <div>
+                                <dt class="text-xs text-gray-500">Name</dt>
+                                <dd class="text-sm text-gray-900">{{ target_user.display_name }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Email</dt>
+                                <dd class="text-sm text-gray-900">{{ target_user.primary_email }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Status</dt>
+                                <dd>
+                                    {% if target_user.is_active %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Active</span>
+                                    {% else %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Disabled</span>
+                                    {% endif %}
+                                    {% if target_user.is_super_admin %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800 ml-1">Admin</span>
+                                    {% endif %}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Active Sessions</dt>
+                                <dd class="text-sm text-gray-900">{{ user_sessions|length }}</dd>
+                            </div>
+                        </dl>
+
+                        <div class="mt-6 pt-4 border-t border-gray-200 space-y-2">
+                            <h3 class="text-sm font-medium text-gray-900">Actions</h3>
+                            {% if user_sessions|length > 0 %}
+                                <form method="post" action="/service-admin/security/users/{{ target_user.id }}/terminate-sessions" 
+                                      onsubmit="return confirm('Terminate all sessions for this user?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="w-full px-3 py-2 text-sm bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200">
+                                        Terminate All Sessions ({{ user_sessions|length }})
+                                    </button>
+                                </form>
+                            {% endif %}
+                            {% if target_user.is_active %}
+                                <form method="post" action="/service-admin/security/users/{{ target_user.id }}/disable"
+                                      onsubmit="return confirm('Disable this user account? They will not be able to log in.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="w-full px-3 py-2 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200">
+                                        Disable Account
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="/service-admin/security/users/{{ target_user.id }}/enable">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="w-full px-3 py-2 text-sm bg-green-100 text-green-800 rounded hover:bg-green-200">
+                                        Re-enable Account
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-gray-500">No registered account found for this email.</p>
+                        <p class="text-xs text-gray-400 mt-2">The login attempts may be for an email that has never successfully registered.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Login Attempts -->
+            <div class="lg:col-span-2 bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Login Attempts</h2>
+                    <p class="text-sm text-gray-500">{{ login_attempts|length }} attempt(s) in last {{ hours }} hour(s)</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Result</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for attempt in login_attempts %}
+                                <tr>
+                                    <td class="px-4 py-3 text-sm text-gray-900">{{ attempt.created_at }}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <a href="/service-admin/security?ip={{ attempt.ip_address|url_encode }}" class="text-blue-600 hover:text-blue-800">
+                                            {{ attempt.ip_address }}
+                                        </a>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">{{ attempt.provider_type|default('—') }}</td>
+                                    <td class="px-4 py-3">
+                                        {% if attempt.success %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Success</span>
+                                        {% else %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Failed</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="px-4 py-8 text-center text-gray-500">No login attempts</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+        <!-- Overview of suspicious activity -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Suspicious IPs -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">IPs with Failed Logins</h2>
+                    <p class="text-sm text-gray-500">3+ failed attempts in last {{ hours }} hours</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Failed</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Emails</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for item in failed_ips %}
+                                <tr class="{{ item.failed_attempts >= 10 ? 'bg-red-50' : '' }}">
+                                    <td class="px-4 py-3 text-sm">
+                                        <a href="/service-admin/security?ip={{ item.ip_address|url_encode }}" class="text-blue-600 hover:text-blue-800">
+                                            {{ item.ip_address }}
+                                        </a>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm {{ item.failed_attempts >= 10 ? 'text-red-600 font-medium' : 'text-gray-900' }}">
+                                        {{ item.failed_attempts }}
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">{{ item.unique_emails }}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">{{ item.last_attempt|date('H:i') }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="px-4 py-8 text-center text-gray-500">No suspicious IPs detected</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Targeted Accounts -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Targeted Accounts</h2>
+                    <p class="text-sm text-gray-500">3+ failed attempts in last {{ hours }} hours</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Failed</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IPs</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for item in failed_emails %}
+                                <tr class="{{ item.failed_attempts >= 10 ? 'bg-red-50' : '' }}">
+                                    <td class="px-4 py-3 text-sm">
+                                        <a href="/service-admin/security?email={{ item.oauth_email|url_encode }}" class="text-blue-600 hover:text-blue-800">
+                                            {{ item.oauth_email }}
+                                        </a>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm {{ item.failed_attempts >= 10 ? 'text-red-600 font-medium' : 'text-gray-900' }}">
+                                        {{ item.failed_attempts }}
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">{{ item.unique_ips }}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">{{ item.last_attempt|date('H:i') }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="px-4 py-8 text-center text-gray-500">No targeted accounts detected</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

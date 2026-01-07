@@ -1,0 +1,99 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}{{ action.title }} - Confirm Action{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto py-12 px-4">
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+        <!-- Header with icon -->
+        <div class="px-6 py-8 text-center {% if action.icon == 'danger' %}bg-red-50{% elseif action.icon == 'warning' %}bg-yellow-50{% else %}bg-green-50{% endif %}">
+            {% if action.icon == 'danger' %}
+            <div class="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            {% elseif action.icon == 'warning' %}
+            <div class="mx-auto w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            {% else %}
+            <div class="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+            </div>
+            {% endif %}
+            
+            <h1 class="text-2xl font-bold {% if action.icon == 'danger' %}text-red-900{% elseif action.icon == 'warning' %}text-yellow-900{% else %}text-green-900{% endif %}">
+                {{ action.title }}
+            </h1>
+        </div>
+        
+        <!-- Details -->
+        <div class="px-6 py-6">
+            <p class="text-gray-600 text-center mb-6">{{ action.description }}</p>
+            
+            {% if context.charity_name %}
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <p class="text-sm text-gray-500">Charity</p>
+                <p class="font-medium text-gray-900">{{ context.charity_name }}</p>
+            </div>
+            {% endif %}
+            
+            {% if context.target_user_name %}
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <p class="text-sm text-gray-500">User</p>
+                <p class="font-medium text-gray-900">{{ context.target_user_name }}</p>
+            </div>
+            {% endif %}
+            
+            {% if context.provider_name %}
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <p class="text-sm text-gray-500">Provider</p>
+                <p class="font-medium text-gray-900">{{ context.provider_name }}</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Actions -->
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
+            {% if is_recently_authenticated %}
+            <!-- User has confirmed identity - show execute button -->
+            <form method="post" action="/service-admin/confirm-action">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="flex space-x-3">
+                    <a href="{{ cancel_url }}" class="flex-1 py-3 px-4 border border-gray-300 rounded-md text-center text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" class="flex-1 py-3 px-4 rounded-md text-sm font-medium text-white 
+                        {% if action.icon == 'danger' %}bg-red-600 hover:bg-red-700{% elseif action.icon == 'warning' %}bg-yellow-600 hover:bg-yellow-700{% else %}bg-green-600 hover:bg-green-700{% endif %}">
+                        {{ action.confirm_button }}
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <!-- User needs to confirm identity first -->
+            <div class="text-center mb-4">
+                <p class="text-sm text-gray-600 mb-4">
+                    <svg class="inline w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    Please confirm your identity to proceed
+                </p>
+            </div>
+            <div class="flex space-x-3">
+                <a href="{{ cancel_url }}" class="flex-1 py-3 px-4 border border-gray-300 rounded-md text-center text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <a href="/login?reauth=1" class="flex-1 py-3 px-4 bg-blue-600 rounded-md text-center text-sm font-medium text-white hover:bg-blue-700">
+                    Confirm Identity
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

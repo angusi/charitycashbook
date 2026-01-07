@@ -1,0 +1,128 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Modules - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Modules</h1>
+    <p class="text-sm text-gray-500">{{ charity.name }}</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- Settings Navigation -->
+    <div class="lg:col-span-1">
+        <nav class="space-y-1">
+            <a href="/charity/{{ charity.id }}/settings" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                General
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/modules" 
+               class="bg-blue-50 text-blue-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Modules
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/users" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Users
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/roles" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Roles
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/allowed-emails" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Allowed Emails
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/audit" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Audit Log
+            </a>
+        </nav>
+    </div>
+
+    <!-- Modules List -->
+    <div class="lg:col-span-3 space-y-4">
+        {% for moduleId, module in modules %}
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <div class="px-6 py-4 flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="flex-shrink-0 w-10 h-10 bg-{{ module.is_enabled ? 'blue' : 'gray' }}-100 rounded-lg flex items-center justify-center">
+                            {% if module.icon == 'users' %}
+                                <svg class="w-5 h-5 text-{{ module.is_enabled ? 'blue' : 'gray' }}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                            {% elseif module.icon == 'gift' %}
+                                <svg class="w-5 h-5 text-{{ module.is_enabled ? 'blue' : 'gray' }}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                </svg>
+                            {% elseif module.icon == 'id-card' %}
+                                <svg class="w-5 h-5 text-{{ module.is_enabled ? 'blue' : 'gray' }}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+                                </svg>
+                            {% elseif module.icon == 'chart-bar' %}
+                                <svg class="w-5 h-5 text-{{ module.is_enabled ? 'blue' : 'gray' }}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                            {% else %}
+                                <svg class="w-5 h-5 text-{{ module.is_enabled ? 'blue' : 'gray' }}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-900">{{ module.name }}</h3>
+                            <p class="text-sm text-gray-500">{{ module.description }}</p>
+                            {% if module.dependencies|length > 0 %}
+                                <p class="text-xs text-gray-400 mt-1">
+                                    Requires: 
+                                    {% for dep in module.dependencies %}
+                                        {{ modules[dep].name }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        {% if module.is_enabled %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Enabled
+                            </span>
+                            <form id="disable-{{ moduleId }}-form" method="post" action="/charity/{{ charity.id }}/settings/modules/{{ moduleId }}/disable" class="inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="button" 
+                                        onclick="confirmAndSubmit('disable-{{ moduleId }}-form', 'Disable {{ module.name }}', 'This will hide the module from navigation but will not delete any data.')"
+                                        class="text-sm text-red-600 hover:text-red-900 font-medium">
+                                    Disable
+                                </button>
+                            </form>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                Disabled
+                            </span>
+                            <form method="post" action="/charity/{{ charity.id }}/settings/modules/{{ moduleId }}/enable" class="inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="text-sm text-blue-600 hover:text-blue-900 font-medium">
+                                    Enable
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+
+        <div class="mt-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <h3 class="text-sm font-medium text-gray-900 mb-2">About Modules</h3>
+            <ul class="text-sm text-gray-500 space-y-1">
+                <li>• Disabling a module hides it from navigation but does not delete any data</li>
+                <li>• You can re-enable a module at any time to access previous data</li>
+                <li>• Some modules depend on others (e.g., Gift Aid requires Donors)</li>
+                <li>• Core features like Transactions and Funds are always available</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+{% include 'components/confirm_modal.html.twig' %}
+{% endblock %}

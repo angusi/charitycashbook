@@ -1,0 +1,196 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Fund Breakdown - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Fund-by-Fund R&amp;P Breakdown</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    <a href="/charity/{{ charity.id }}/reports" class="text-sm text-blue-600 hover:text-blue-800">← Back to Reports</a>
+</div>
+
+{% include 'components/report_date_picker.html.twig' %}
+
+<!-- Report -->
+<div class="bg-white rounded-lg shadow overflow-x-auto" id="report-content">
+    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+        <h2 class="text-lg font-medium text-gray-900">{{ charity.name }}</h2>
+        <p class="text-sm text-gray-600">Receipts and Payments Account - Fund Analysis</p>
+        <p class="text-sm text-gray-600">For the period {{ date_from }} to {{ date_to }}</p>
+    </div>
+
+    <div class="p-6 overflow-x-auto">
+        {% if report.funds is empty %}
+        <div class="text-center py-8 text-gray-500">
+            <p>No funds have been set up yet.</p>
+            <a href="/charity/{{ charity.id }}/funds/create" class="text-blue-600 hover:text-blue-800">Create a fund</a>
+        </div>
+        {% else %}
+        <!-- Opening Balances -->
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-500 pb-2 mb-4">OPENING BALANCES</h3>
+            <table class="w-full min-w-max">
+                <thead>
+                    <tr class="text-sm text-gray-500">
+                        <th class="text-left pb-2 pr-4 min-w-[200px]"></th>
+                        {% for fund in report.funds %}
+                        <th class="text-right pb-2 px-2 min-w-[100px]">{{ fund.name }}</th>
+                        {% endfor %}
+                        <th class="text-right pb-2 pl-4 min-w-[100px] font-bold">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="bg-gray-50">
+                        <td class="py-2 text-sm font-medium text-gray-900 pr-4">Balance at {{ date_from }}</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2">£{{ report.fund_totals[fund.id].opening|number_format(2) }}</td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-gray-900 pl-4">£{{ report.grand_totals.opening|number_format(2) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Receipts Section -->
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-green-500 pb-2 mb-4">RECEIPTS</h3>
+            <table class="w-full min-w-max">
+                <thead>
+                    <tr class="text-sm text-gray-500">
+                        <th class="text-left pb-2 pr-4 min-w-[200px]">Category</th>
+                        {% for fund in report.funds %}
+                        <th class="text-right pb-2 px-2 min-w-[100px]">{{ fund.name }}</th>
+                        {% endfor %}
+                        <th class="text-right pb-2 pl-4 min-w-[100px] font-bold">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in report.receipt_categories %}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4">{{ category.name }}</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2">
+                            {% if category.funds[fund.id] > 0 %}
+                            £{{ category.funds[fund.id]|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4">£{{ category.total|number_format(2) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ report.funds|length + 2 }}" class="py-4 text-sm text-gray-500 text-center">No receipts in this period</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="bg-green-50">
+                        <td class="py-2 text-sm font-bold text-gray-900 pr-4">Total Receipts</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right font-bold text-gray-900 px-2">£{{ report.fund_totals[fund.id].receipts|number_format(2) }}</td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-green-700 pl-4">£{{ report.grand_totals.receipts|number_format(2) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Payments Section -->
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-red-500 pb-2 mb-4">PAYMENTS</h3>
+            <table class="w-full min-w-max">
+                <thead>
+                    <tr class="text-sm text-gray-500">
+                        <th class="text-left pb-2 pr-4 min-w-[200px]">Category</th>
+                        {% for fund in report.funds %}
+                        <th class="text-right pb-2 px-2 min-w-[100px]">{{ fund.name }}</th>
+                        {% endfor %}
+                        <th class="text-right pb-2 pl-4 min-w-[100px] font-bold">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in report.payment_categories %}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4">{{ category.name }}</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2">
+                            {% if category.funds[fund.id] > 0 %}
+                            £{{ category.funds[fund.id]|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4">£{{ category.total|number_format(2) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ report.funds|length + 2 }}" class="py-4 text-sm text-gray-500 text-center">No payments in this period</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="bg-red-50">
+                        <td class="py-2 text-sm font-bold text-gray-900 pr-4">Total Payments</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right font-bold text-gray-900 px-2">£{{ report.fund_totals[fund.id].payments|number_format(2) }}</td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-red-700 pl-4">£{{ report.grand_totals.payments|number_format(2) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Closing Balances -->
+        <div class="bg-blue-50 rounded-lg p-4">
+            <table class="w-full min-w-max">
+                <thead>
+                    <tr class="text-sm text-gray-500">
+                        <th class="text-left pb-2 pr-4 min-w-[200px]"></th>
+                        {% for fund in report.funds %}
+                        <th class="text-right pb-2 px-2 min-w-[100px]">{{ fund.name }}</th>
+                        {% endfor %}
+                        <th class="text-right pb-2 pl-4 min-w-[100px] font-bold">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="py-1 text-sm font-bold text-gray-900 pr-4">Net Movement</td>
+                        {% for fund in report.funds %}
+                        {% set net = report.fund_totals[fund.id].receipts - report.fund_totals[fund.id].payments %}
+                        <td class="py-1 text-sm text-right font-bold px-2 {{ net >= 0 ? 'text-green-700' : 'text-red-700' }}">
+                            £{{ net|number_format(2) }}
+                        </td>
+                        {% endfor %}
+                        {% set total_net = report.grand_totals.receipts - report.grand_totals.payments %}
+                        <td class="py-1 text-sm text-right font-bold pl-4 {{ total_net >= 0 ? 'text-green-700' : 'text-red-700' }}">
+                            £{{ total_net|number_format(2) }}
+                        </td>
+                    </tr>
+                    <tr class="border-t-2 border-blue-200">
+                        <td class="py-2 text-sm font-bold text-gray-900 pr-4">Balance at {{ date_to }}</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right font-bold text-gray-900 px-2">£{{ report.fund_totals[fund.id].closing|number_format(2) }}</td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-blue-700 pl-4">£{{ report.grand_totals.closing|number_format(2) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="mt-4 flex justify-between items-center">
+    <p class="text-sm text-gray-500">
+        This report shows a fund-by-fund breakdown suitable for OSCR annual returns.
+    </p>
+    <button onclick="window.print()" class="px-4 py-2 text-sm text-gray-700 hover:text-gray-900">
+        Print Report
+    </button>
+</div>
+{% endblock %}

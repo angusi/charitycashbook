@@ -1,0 +1,83 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}New Operational Category - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-lg mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">New Operational Category</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    {% if reporting_categories is empty %}
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <p class="text-sm text-yellow-800">
+                You need to create a reporting category first before you can add operational categories.
+            </p>
+            <a href="/charity/{{ charity.id }}/categories/reporting/create?type={{ type }}" 
+               class="mt-2 inline-block text-sm text-yellow-700 underline">
+                Create a reporting category
+            </a>
+        </div>
+    {% else %}
+        <div class="bg-white rounded-lg shadow p-6">
+            <form method="post" action="/charity/{{ charity.id }}/categories/operational">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="space-y-6">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Name *</label>
+                        <input type="text" name="name" id="name" required maxlength="100"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                               placeholder="e.g. Regular Donations, Gift Aid, Building Rent">
+                    </div>
+
+                    <div>
+                        <label for="reporting_category_id" class="block text-sm font-medium text-gray-700">Reporting Category *</label>
+                        <select name="reporting_category_id" id="reporting_category_id" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="">Select a reporting category</option>
+                            {% for rc in reporting_categories %}
+                                <option value="{{ rc.id }}">{{ rc.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">This operational category will roll up to the selected reporting category</p>
+                    </div>
+
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea name="description" id="description" rows="2"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  placeholder="Optional description"></textarea>
+                    </div>
+
+                    <div>
+                        <label for="display_order" class="block text-sm font-medium text-gray-700">Display Order</label>
+                        <input type="number" name="display_order" id="display_order" value="0" min="0"
+                               class="mt-1 block w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Lower numbers appear first</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-end space-x-3">
+                    <a href="/charity/{{ charity.id }}/categories" 
+                       class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Create Category
+                    </button>
+                </div>
+            </form>
+        </div>
+    {% endif %}
+
+    <div class="mt-6 text-sm text-gray-500">
+        <p><strong>Operational categories</strong> are the detailed categories you use day-to-day when recording transactions.</p>
+        <p class="mt-2">They roll up to reporting categories in your published accounts.</p>
+    </div>
+</div>
+{% endblock %}

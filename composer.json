@@ -1,0 +1,34 @@
+{
+    "name": "charity/cashbook",
+    "description": "A web-based financial management application for small charities",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2",
+        "slim/slim": "^4.0",
+        "slim/psr7": "^1.0",
+        "twig/twig": "^3.0",
+        "league/oauth2-client": "^2.0",
+        "league/oauth2-google": "^4.0",
+        "thenetworg/oauth2-azure": "^2.0",
+        "slim/twig-view": "^3.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "CharityCashbook\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "CharityCashbook\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "migrate": "php cli/migrate.php up",
+        "migrate:status": "php cli/migrate.php status"
+    }
+}

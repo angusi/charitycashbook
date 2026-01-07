@@ -1,0 +1,388 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Edit Transaction - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Edit Transaction</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <form method="post" action="/charity/{{ charity.id }}/transactions/{{ transaction.id }}" id="transaction-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="split_mode" id="split_mode" value="{{ (transaction.fund_entries|length > 1 or transaction.cashbook_entries|length > 1) ? '1' : '0' }}">
+
+            <div class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="transaction_date" class="block text-sm font-medium text-gray-700">Date *</label>
+                        <input type="date" name="transaction_date" id="transaction_date" required
+                               value="{{ transaction.transaction_date }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount *</label>
+                        <div class="mt-1 relative rounded-md shadow-sm">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500 sm:text-sm">£</span>
+                            </div>
+                            <input type="number" name="amount" id="amount" required min="0.01" step="0.01"
+                                   value="{{ transaction.amount }}"
+                                   class="block w-full pl-7 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700">Description *</label>
+                    <input type="text" name="description" id="description" required maxlength="255"
+                           value="{{ transaction.description }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="reference" class="block text-sm font-medium text-gray-700">Reference</label>
+                    <input type="text" name="reference" id="reference" maxlength="100"
+                           value="{{ transaction.reference }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="category_id" class="block text-sm font-medium text-gray-700">Category *</label>
+                    <select name="operational_category_id" id="category_id" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        {% for category in categories %}
+                            <option value="{{ category.id }}" {{ transaction.operational_category_id == category.id ? 'selected' : '' }}>
+                                {{ category.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Simple mode: single fund -->
+                <div id="simple-fund-section" class="{{ transaction.fund_entries|length > 1 ? 'hidden' : '' }}">
+                    <div class="flex justify-between items-center">
+                        <label for="fund_id" class="block text-sm font-medium text-gray-700">Fund *</label>
+                        {% if funds|length > 1 %}
+                        <button type="button" onclick="toggleSplitMode('fund')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Split across funds
+                        </button>
+                        {% endif %}
+                    </div>
+                    <select name="fund_id" id="fund_id" {{ transaction.fund_entries|length > 1 ? '' : 'required' }}
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="">Select a fund</option>
+                        {% for fund in funds %}
+                            <option value="{{ fund.id }}" {{ transaction.fund_id == fund.id ? 'selected' : '' }}>
+                                {{ fund.name }} ({{ fund.fund_type }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Split mode: multiple funds -->
+                <div id="split-fund-section" class="{{ transaction.fund_entries|length > 1 ? '' : 'hidden' }}">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Fund Allocation *</label>
+                        <button type="button" onclick="toggleSplitMode('fund')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Use single fund
+                        </button>
+                    </div>
+                    <div id="fund-entries" class="space-y-2">
+                        <!-- Fund entry rows added dynamically -->
+                    </div>
+                    <button type="button" onclick="addFundEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                        + Add fund
+                    </button>
+                    <div class="mt-2 text-sm">
+                        <span class="text-gray-500">Allocated: £</span>
+                        <span id="fund-total" class="font-medium">0.00</span>
+                        <span class="text-gray-500"> / £</span>
+                        <span id="fund-target" class="font-medium">0.00</span>
+                        <span id="fund-remaining" class="text-gray-500"></span>
+                    </div>
+                </div>
+
+                {% if cash_books is defined and cash_books|length > 0 %}
+                <!-- Simple mode: single cashbook -->
+                <div id="simple-cashbook-section" class="{{ transaction.cashbook_entries|length > 1 ? 'hidden' : '' }}">
+                    <div class="flex justify-between items-center">
+                        <label for="cash_book_id" class="block text-sm font-medium text-gray-700">Cash Book</label>
+                        {% if cash_books|length > 1 %}
+                        <button type="button" onclick="toggleSplitMode('cashbook')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Split across cashbooks
+                        </button>
+                        {% endif %}
+                    </div>
+                    <select name="cash_book_id" id="cash_book_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="">Not assigned</option>
+                        {% for book in cash_books %}
+                            <option value="{{ book.id }}" {{ transaction.cash_book_id == book.id ? 'selected' : '' }}>
+                                {{ book.name }} ({{ book.book_type|capitalize }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Optionally assign to a cash book for reconciliation</p>
+                </div>
+
+                <!-- Split mode: multiple cashbooks -->
+                <div id="split-cashbook-section" class="{{ transaction.cashbook_entries|length > 1 ? '' : 'hidden' }}">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Cashbook Allocation</label>
+                        <button type="button" onclick="toggleSplitMode('cashbook')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Use single cashbook
+                        </button>
+                    </div>
+                    <div id="cashbook-entries" class="space-y-2">
+                        <!-- Cashbook entry rows added dynamically -->
+                    </div>
+                    <button type="button" onclick="addCashbookEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                        + Add cashbook
+                    </button>
+                    <div class="mt-2 text-sm">
+                        <span class="text-gray-500">Allocated: £</span>
+                        <span id="cashbook-total" class="font-medium">0.00</span>
+                        <span class="text-gray-500"> / £</span>
+                        <span id="cashbook-target" class="font-medium">0.00</span>
+                        <span id="cashbook-remaining" class="text-gray-500"></span>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if transaction.transaction_type == 'receipt' %}
+                    <div class="border-t border-gray-200 pt-6">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Gift Aid</h3>
+                        
+                        <div class="mb-4">
+                            <label for="donor_id" class="block text-sm font-medium text-gray-700">Donor</label>
+                            <select name="donor_id" id="donor_id"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <option value="">No donor / Anonymous</option>
+                                {% for donor in donors %}
+                                    <option value="{{ donor.id }}" {{ transaction.donor_id == donor.id ? 'selected' : '' }}>{{ donor.name }}{% if donor.has_active_declaration %} ✓{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">✓ = has active Gift Aid declaration</p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="has_oneoff_declaration" value="1"
+                                       {{ transaction.has_oneoff_declaration ? 'checked' : '' }}
+                                       class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">One-off Gift Aid declaration received</span>
+                            </label>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-3">
+                <a href="/charity/{{ charity.id }}/transactions/{{ transaction.id }}" 
+                   class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const funds = {{ funds|json_encode|raw }};
+const cashBooks = {{ cash_books is defined ? cash_books|json_encode|raw : '[]' }};
+const existingFundEntries = {{ transaction.fund_entries|json_encode|raw }};
+const existingCashbookEntries = {{ transaction.cashbook_entries|default([])|json_encode|raw }};
+
+let fundSplitMode = existingFundEntries.length > 1;
+let cashbookSplitMode = existingCashbookEntries.length > 1;
+let fundEntryCount = 0;
+let cashbookEntryCount = 0;
+
+function toggleSplitMode(type) {
+    if (type === 'fund') {
+        fundSplitMode = !fundSplitMode;
+        document.getElementById('simple-fund-section').classList.toggle('hidden', fundSplitMode);
+        document.getElementById('split-fund-section').classList.toggle('hidden', !fundSplitMode);
+        
+        if (fundSplitMode) {
+            document.getElementById('fund_id').value = '';
+            document.getElementById('fund_id').removeAttribute('required');
+            if (fundEntryCount === 0) {
+                addFundEntry();
+                addFundEntry();
+            }
+        } else {
+            document.getElementById('fund_id').setAttribute('required', 'required');
+        }
+    } else if (type === 'cashbook') {
+        cashbookSplitMode = !cashbookSplitMode;
+        document.getElementById('simple-cashbook-section').classList.toggle('hidden', cashbookSplitMode);
+        document.getElementById('split-cashbook-section').classList.toggle('hidden', !cashbookSplitMode);
+        
+        if (cashbookSplitMode) {
+            document.getElementById('cash_book_id').value = '';
+            if (cashbookEntryCount === 0) {
+                addCashbookEntry();
+                addCashbookEntry();
+            }
+        }
+    }
+    updateSplitMode();
+}
+
+function updateSplitMode() {
+    document.getElementById('split_mode').value = (fundSplitMode || cashbookSplitMode) ? '1' : '0';
+}
+
+function addFundEntry(fundId = '', amount = '') {
+    const container = document.getElementById('fund-entries');
+    const idx = fundEntryCount++;
+    
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.id = `fund-entry-${idx}`;
+    row.innerHTML = `
+        <select name="fund_entries[${idx}][fund_id]" required
+                class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <option value="">Select fund</option>
+            ${funds.map(f => `<option value="${f.id}" ${f.id == fundId ? 'selected' : ''}>${f.name}</option>`).join('')}
+        </select>
+        <div class="relative w-32">
+            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                <span class="text-gray-500 sm:text-sm">£</span>
+            </div>
+            <input type="number" name="fund_entries[${idx}][amount]" step="0.01" min="0" required
+                   value="${amount}"
+                   onchange="updateFundTotals()" oninput="updateFundTotals()"
+                   class="block w-full pl-6 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   placeholder="0.00">
+        </div>
+        <button type="button" onclick="removeFundEntry(${idx})" class="text-red-500 hover:text-red-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    container.appendChild(row);
+    updateFundTotals();
+}
+
+function removeFundEntry(idx) {
+    const row = document.getElementById(`fund-entry-${idx}`);
+    if (row) row.remove();
+    updateFundTotals();
+}
+
+function addCashbookEntry(cashBookId = '', amount = '') {
+    const container = document.getElementById('cashbook-entries');
+    const idx = cashbookEntryCount++;
+    
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.id = `cashbook-entry-${idx}`;
+    row.innerHTML = `
+        <select name="cashbook_entries[${idx}][cash_book_id]" required
+                class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <option value="">Select cashbook</option>
+            ${cashBooks.map(cb => `<option value="${cb.id}" ${cb.id == cashBookId ? 'selected' : ''}>${cb.name}</option>`).join('')}
+        </select>
+        <div class="relative w-32">
+            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                <span class="text-gray-500 sm:text-sm">£</span>
+            </div>
+            <input type="number" name="cashbook_entries[${idx}][amount]" step="0.01" min="0" required
+                   value="${amount}"
+                   onchange="updateCashbookTotals()" oninput="updateCashbookTotals()"
+                   class="block w-full pl-6 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   placeholder="0.00">
+        </div>
+        <button type="button" onclick="removeCashbookEntry(${idx})" class="text-red-500 hover:text-red-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    container.appendChild(row);
+    updateCashbookTotals();
+}
+
+function removeCashbookEntry(idx) {
+    const row = document.getElementById(`cashbook-entry-${idx}`);
+    if (row) row.remove();
+    updateCashbookTotals();
+}
+
+function updateFundTotals() {
+    const target = parseFloat(document.getElementById('amount').value) || 0;
+    const inputs = document.querySelectorAll('#fund-entries input[type="number"]');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+    
+    document.getElementById('fund-total').textContent = total.toFixed(2);
+    document.getElementById('fund-target').textContent = target.toFixed(2);
+    
+    const remaining = target - total;
+    const remainingEl = document.getElementById('fund-remaining');
+    if (Math.abs(remaining) > 0.01) {
+        remainingEl.textContent = ` (${remaining > 0 ? '+' : ''}${remaining.toFixed(2)} remaining)`;
+        remainingEl.className = remaining > 0 ? 'text-orange-500' : 'text-red-500';
+    } else {
+        remainingEl.textContent = ' ✓';
+        remainingEl.className = 'text-green-500';
+    }
+}
+
+function updateCashbookTotals() {
+    const target = parseFloat(document.getElementById('amount').value) || 0;
+    const inputs = document.querySelectorAll('#cashbook-entries input[type="number"]');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+    
+    document.getElementById('cashbook-total').textContent = total.toFixed(2);
+    document.getElementById('cashbook-target').textContent = target.toFixed(2);
+    
+    const remaining = target - total;
+    const remainingEl = document.getElementById('cashbook-remaining');
+    if (Math.abs(remaining) > 0.01) {
+        remainingEl.textContent = ` (${remaining > 0 ? '+' : ''}${remaining.toFixed(2)} remaining)`;
+        remainingEl.className = remaining > 0 ? 'text-orange-500' : 'text-red-500';
+    } else {
+        remainingEl.textContent = ' ✓';
+        remainingEl.className = 'text-green-500';
+    }
+}
+
+// Initialize with existing entries
+document.addEventListener('DOMContentLoaded', function() {
+    if (fundSplitMode && existingFundEntries.length > 0) {
+        existingFundEntries.forEach(entry => {
+            addFundEntry(entry.fund_id, Math.abs(parseFloat(entry.amount)).toFixed(2));
+        });
+    }
+    if (cashbookSplitMode && existingCashbookEntries.length > 0) {
+        existingCashbookEntries.forEach(entry => {
+            addCashbookEntry(entry.cash_book_id, Math.abs(parseFloat(entry.amount)).toFixed(2));
+        });
+    }
+});
+
+// Update totals when amount changes
+document.getElementById('amount').addEventListener('input', function() {
+    if (fundSplitMode) updateFundTotals();
+    if (cashbookSplitMode) updateCashbookTotals();
+});
+</script>
+{% endblock %}

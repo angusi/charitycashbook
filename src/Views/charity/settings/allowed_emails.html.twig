@@ -1,0 +1,143 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Allowed Emails - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Allowed Emails & Domains</h1>
+    <p class="text-sm text-gray-500">{{ charity.name }}</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- Settings Navigation -->
+    <div class="lg:col-span-1">
+        <nav class="space-y-1">
+            <a href="/charity/{{ charity.id }}/settings" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                General
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/modules" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Modules
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/users" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Users
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/roles" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Roles
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/allowed-emails" 
+               class="bg-blue-50 text-blue-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Allowed Emails
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/audit" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Audit Log
+            </a>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <div class="lg:col-span-3 space-y-6">
+        <!-- Add New Pattern -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Add Authorization</h2>
+            <form method="post" action="/charity/{{ charity.id }}/settings/allowed-emails" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="sm:col-span-1">
+                        <label for="pattern_type" class="block text-sm font-medium text-gray-700">Type</label>
+                        <select name="pattern_type" id="pattern_type" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="email">Single Email</option>
+                            <option value="domain">Entire Domain</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="pattern" class="block text-sm font-medium text-gray-700">Email or Domain</label>
+                        <input type="text" name="pattern" id="pattern" required maxlength="255"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                               placeholder="user@example.com or @example.com">
+                    </div>
+                </div>
+                
+                <div class="text-xs text-gray-500">
+                    <p><strong>Single Email:</strong> Only this specific email can sign up (e.g., john@example.com)</p>
+                    <p><strong>Entire Domain:</strong> Anyone with this email domain can sign up (e.g., @example.com)</p>
+                </div>
+                
+                <div class="flex justify-end">
+                    <button type="submit" 
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Add Authorization
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Current Authorizations -->
+        <div class="bg-white rounded-lg shadow overflow-x-auto">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Current Authorizations</h2>
+                <p class="text-sm text-gray-500">Users must match one of these patterns to sign up</p>
+            </div>
+            
+            {% if allowed_emails is empty %}
+                <div class="px-6 py-8 text-center text-gray-500">
+                    <p>No authorizations configured.</p>
+                    <p class="text-sm">Add an email or domain above to allow users to sign up.</p>
+                </div>
+            {% else %}
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pattern</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for item in allowed_emails %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="text-sm font-medium text-gray-900">{{ item.email_pattern }}</span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                        {{ item.pattern_type == 'domain' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800' }}">
+                                        {{ item.pattern_type == 'domain' ? 'Domain' : 'Email' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <form method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ item.id }}/delete" class="inline"
+                                          onsubmit="return confirm('Remove this authorization? Users with this email/domain will no longer be able to sign up.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+
+        <!-- Info Box -->
+        <div class="bg-blue-50 rounded-lg p-4">
+            <h3 class="text-sm font-medium text-blue-800">How authorization works</h3>
+            <ul class="mt-2 text-sm text-blue-700 list-disc list-inside space-y-1">
+                <li>Users sign in with their OAuth provider (Google, Microsoft, etc.)</li>
+                <li>Their email is checked against the patterns configured here</li>
+                <li>If a match is found, they can create an account or sign in</li>
+                <li>The first user to sign up becomes an admin; subsequent users get standard access</li>
+                <li>You can change user roles from the <a href="/charity/{{ charity.id }}/settings/users" class="underline">Users</a> page</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Delete User Account - {{ user_data.account.display_name }} - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+            <a href="/service-admin/privacy" class="hover:text-gray-700">Privacy & Data Management</a>
+            <span>›</span>
+            <a href="/service-admin/privacy/users/{{ user_data.account.id }}" class="hover:text-gray-700">{{ user_data.account.display_name }}</a>
+            <span>›</span>
+            <span>Delete</span>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900">Delete User Account</h1>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">{{ user_data.account.display_name }}</h2>
+            <p class="text-sm text-gray-500">{{ user_data.account.primary_email }}</p>
+        </div>
+
+        <div class="px-6 py-4">
+            <!-- Warning Box -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <div class="flex">
+                    <svg class="h-5 w-5 text-yellow-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-yellow-800">Warning: This action cannot be undone</h3>
+                        <p class="mt-1 text-sm text-yellow-700">
+                            This will permanently delete the user account and associated authentication data.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Can Delete Status -->
+            {% if can_delete %}
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <svg class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">Account can be deleted</h3>
+                            <p class="mt-1 text-sm text-green-700">
+                                This user account has no data requiring legal retention and can be fully deleted.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                    <div class="flex">
+                        <svg class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">Account cannot be fully deleted</h3>
+                            <p class="mt-1 text-sm text-red-700">
+                                This user has audit log entries that must be retained for 7 years under HMRC requirements.
+                                The account will be deactivated and anonymised instead.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- What will be deleted -->
+            <div class="mb-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">What will happen:</h3>
+                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>Account login will be permanently disabled</li>
+                    <li>All linked identities ({{ user_data.identities|length }}) will be deleted</li>
+                    <li>All active sessions ({{ user_data.sessions|length }}) will be terminated</li>
+                    <li>Charity access records ({{ user_data.charity_access|length }}) will be removed</li>
+                    {% if can_delete %}
+                        <li>Login history will be deleted</li>
+                        <li>Audit log entries will be deleted</li>
+                    {% else %}
+                        <li>Login history will be anonymised (IP addresses retained)</li>
+                        <li>Audit log entries will be anonymised but retained for legal compliance</li>
+                    {% endif %}
+                    <li>Personal data (name, email) will be replaced with "Deleted User #{{ user_data.account.id }}"</li>
+                </ul>
+            </div>
+
+            <!-- Data Summary -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Data Summary</h3>
+                <dl class="grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-gray-500">Linked Identities</dt>
+                    <dd class="text-gray-900">{{ user_data.identities|length }}</dd>
+                    <dt class="text-gray-500">Charity Access</dt>
+                    <dd class="text-gray-900">{{ user_data.charity_access|length }}</dd>
+                    <dt class="text-gray-500">Active Sessions</dt>
+                    <dd class="text-gray-900">{{ user_data.sessions|length }}</dd>
+                    <dt class="text-gray-500">Login History</dt>
+                    <dd class="text-gray-900">{{ user_data.login_history|length }} entries</dd>
+                    <dt class="text-gray-500">Audit Log Entries</dt>
+                    <dd class="text-gray-900">{{ user_data.audit_log|length }} entries</dd>
+                </dl>
+            </div>
+
+            <!-- Confirmation Form -->
+            <form method="post" action="/service-admin/privacy/users/{{ user_data.account.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="mb-4">
+                    <label class="flex items-start">
+                        <input type="checkbox" name="confirm" required 
+                               class="mt-1 rounded border-gray-300 text-red-600 shadow-sm focus:border-red-500 focus:ring-red-500">
+                        <span class="ml-2 text-sm text-gray-600">
+                            I understand that this action cannot be undone and will permanently 
+                            {% if can_delete %}delete{% else %}anonymise{% endif %} this user account.
+                        </span>
+                    </label>
+                </div>
+
+                <div class="mb-4">
+                    <label for="reason" class="block text-sm font-medium text-gray-700 mb-1">
+                        Reason for deletion <span class="text-red-500">*</span>
+                    </label>
+                    <select name="reason" id="reason" required
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">Select a reason...</option>
+                        <option value="user_request">User requested account deletion (GDPR)</option>
+                        <option value="inactive">Account inactive / abandoned</option>
+                        <option value="duplicate">Duplicate account</option>
+                        <option value="admin_action">Administrative action</option>
+                        <option value="other">Other (specify in notes)</option>
+                    </select>
+                </div>
+
+                <div class="mb-6">
+                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                    <textarea name="notes" id="notes" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                              placeholder="Additional context for this deletion..."></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <a href="/service-admin/privacy/users/{{ user_data.account.id }}" 
+                       class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
+                        {% if can_delete %}Delete Account{% else %}Anonymise Account{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="mt-6 text-center">
+        <a href="/service-admin/privacy" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Privacy Search</a>
+    </div>
+</div>
+{% endblock %}

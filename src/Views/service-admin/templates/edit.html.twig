@@ -1,0 +1,223 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Edit {{ template.name }} - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Edit Category Template</h1>
+        <p class="text-sm text-gray-500">{{ template.name }}</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Template Settings -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Template Settings</h2>
+                <form method="post" action="/service-admin/templates/{{ template.id }}" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+                        <input type="text" name="name" id="name" required maxlength="100"
+                               value="{{ template.name }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea name="description" id="description" rows="3"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ template.description }}</textarea>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_active" id="is_active" value="1" {{ template.is_active ? 'checked' : '' }}
+                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        <label for="is_active" class="ml-2 block text-sm text-gray-900">Active</label>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-200 flex justify-between">
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                            Save
+                        </button>
+                    </div>
+                </form>
+                <form method="post" action="/service-admin/templates/{{ template.id }}/delete" class="mt-4"
+                      onsubmit="return confirm('Delete this template? This cannot be undone.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="w-full px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50">
+                        Delete Template
+                    </button>
+                </form>
+            </div>
+
+            <!-- Add Category Form -->
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Add Category</h2>
+                <form method="post" action="/service-admin/templates/{{ template.id }}/items" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                    <div>
+                        <label for="category_type" class="block text-sm font-medium text-gray-700">Type <span class="text-red-500">*</span></label>
+                        <select name="category_type" id="category_type" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="receipt">Receipt (Income)</option>
+                            <option value="payment">Payment (Expenditure)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="reporting_name" class="block text-sm font-medium text-gray-700">Reporting Category <span class="text-red-500">*</span></label>
+                        <input type="text" name="reporting_name" id="reporting_name" required maxlength="100"
+                               placeholder="e.g., Donations and legacies"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">High-level category for annual returns</p>
+                    </div>
+
+                    <div>
+                        <label for="operational_names" class="block text-sm font-medium text-gray-700">Operational Categories</label>
+                        <textarea name="operational_names" id="operational_names" rows="4"
+                                  placeholder="Regular giving&#10;One-off donations&#10;Gift Aid reclaimed"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"></textarea>
+                        <p class="mt-1 text-xs text-gray-500">One per line. Day-to-day categories that roll up to the reporting category.</p>
+                    </div>
+
+                    <button type="submit" class="w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        Add Category
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Categories -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Receipt Categories -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200 bg-green-50">
+                    <h2 class="text-lg font-medium text-green-800">Receipt Categories (Income)</h2>
+                </div>
+                {% if items.receipt|length > 0 %}
+                    <div class="divide-y divide-gray-200">
+                        {% for item in items.receipt %}
+                            <div class="p-4" id="item-{{ item.id }}">
+                                <div class="item-view">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h3 class="text-sm font-medium text-gray-900">{{ item.reporting_name }}</h3>
+                                            {% if item.operational_names|length > 0 %}
+                                                <p class="mt-1 text-xs text-gray-500">
+                                                    {{ item.operational_names|join(', ') }}
+                                                </p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="button" onclick="toggleEdit({{ item.id }})" class="text-sm text-blue-600 hover:text-blue-800">Edit</button>
+                                            <form method="post" action="/service-admin/templates/{{ template.id }}/items/{{ item.id }}/delete" class="inline"
+                                                  onsubmit="return confirm('Remove this category?')">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="text-sm text-red-600 hover:text-red-800">Remove</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                <form class="item-edit hidden space-y-3" method="post" action="/service-admin/templates/{{ template.id }}/items/{{ item.id }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <div>
+                                        <input type="text" name="reporting_name" required maxlength="100"
+                                               value="{{ item.reporting_name }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    </div>
+                                    <div>
+                                        <textarea name="operational_names" rows="3"
+                                                  class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ item.operational_names|join("\n") }}</textarea>
+                                    </div>
+                                    <div class="flex space-x-2">
+                                        <button type="submit" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+                                        <button type="button" onclick="toggleEdit({{ item.id }})" class="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+                                    </div>
+                                </form>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-6 text-center text-gray-500">
+                        No receipt categories yet
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Payment Categories -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200 bg-red-50">
+                    <h2 class="text-lg font-medium text-red-800">Payment Categories (Expenditure)</h2>
+                </div>
+                {% if items.payment|length > 0 %}
+                    <div class="divide-y divide-gray-200">
+                        {% for item in items.payment %}
+                            <div class="p-4" id="item-{{ item.id }}">
+                                <div class="item-view">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h3 class="text-sm font-medium text-gray-900">{{ item.reporting_name }}</h3>
+                                            {% if item.operational_names|length > 0 %}
+                                                <p class="mt-1 text-xs text-gray-500">
+                                                    {{ item.operational_names|join(', ') }}
+                                                </p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex space-x-2">
+                                            <button type="button" onclick="toggleEdit({{ item.id }})" class="text-sm text-blue-600 hover:text-blue-800">Edit</button>
+                                            <form method="post" action="/service-admin/templates/{{ template.id }}/items/{{ item.id }}/delete" class="inline"
+                                                  onsubmit="return confirm('Remove this category?')">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="text-sm text-red-600 hover:text-red-800">Remove</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                <form class="item-edit hidden space-y-3" method="post" action="/service-admin/templates/{{ template.id }}/items/{{ item.id }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <div>
+                                        <input type="text" name="reporting_name" required maxlength="100"
+                                               value="{{ item.reporting_name }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    </div>
+                                    <div>
+                                        <textarea name="operational_names" rows="3"
+                                                  class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ item.operational_names|join("\n") }}</textarea>
+                                    </div>
+                                    <div class="flex space-x-2">
+                                        <button type="submit" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+                                        <button type="button" onclick="toggleEdit({{ item.id }})" class="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</button>
+                                    </div>
+                                </form>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-6 text-center text-gray-500">
+                        No payment categories yet
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6">
+        <a href="/service-admin/templates" class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to Templates</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleEdit(itemId) {
+    const container = document.getElementById('item-' + itemId);
+    const view = container.querySelector('.item-view');
+    const edit = container.querySelector('.item-edit');
+    
+    view.classList.toggle('hidden');
+    edit.classList.toggle('hidden');
+}
+</script>
+{% endblock %}

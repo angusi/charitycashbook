@@ -1,0 +1,111 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Edit {{ provider.name }} - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Edit OAuth Provider</h1>
+        <p class="text-sm text-gray-500">{{ provider.name }}</p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <form method="post" action="/service-admin/providers/{{ provider.id }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Provider Type</label>
+                <p class="mt-1 text-sm text-gray-900 font-medium">
+                    {% if provider.provider_type == 'oidc' %}Generic OIDC{% else %}{{ provider.provider_type|capitalize }}{% endif %}
+                </p>
+                <p class="text-xs text-gray-500">Provider type cannot be changed</p>
+            </div>
+
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Display Name <span class="text-red-500">*</span></label>
+                <input type="text" name="name" id="name" required maxlength="100"
+                       value="{{ provider.name }}"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+
+            <div>
+                <label for="client_id" class="block text-sm font-medium text-gray-700">Client ID <span class="text-red-500">*</span></label>
+                <input type="text" name="client_id" id="client_id" required maxlength="500"
+                       value="{{ provider.client_id }}"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+            </div>
+
+            <div>
+                <label for="client_secret" class="block text-sm font-medium text-gray-700">Client Secret</label>
+                <input type="password" name="client_secret" id="client_secret"
+                       placeholder="Leave blank to keep current secret"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+                <p class="mt-1 text-xs text-gray-500">Only enter a value to change the secret</p>
+            </div>
+
+            {% if provider.provider_type == 'microsoft' %}
+            <div>
+                <label for="tenant_id" class="block text-sm font-medium text-gray-700">Tenant ID <span class="text-red-500">*</span></label>
+                <input type="text" name="tenant_id" id="tenant_id" required maxlength="100"
+                       value="{{ provider.tenant_id }}"
+                       placeholder="common, organizations, or specific tenant ID"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+                <p class="mt-1 text-xs text-gray-500">Use "common" for any Microsoft account, "organizations" for work accounts only</p>
+            </div>
+            {% endif %}
+
+            {% if provider.provider_type == 'oidc' %}
+            <div class="pt-4 border-t border-gray-200">
+                <p class="text-sm font-medium text-gray-700 mb-4">OIDC Endpoints</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label for="authorization_endpoint" class="block text-sm font-medium text-gray-700">Authorization Endpoint <span class="text-red-500">*</span></label>
+                        <input type="url" name="authorization_endpoint" id="authorization_endpoint"
+                               value="{{ provider.authorization_endpoint }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                    </div>
+
+                    <div>
+                        <label for="token_endpoint" class="block text-sm font-medium text-gray-700">Token Endpoint <span class="text-red-500">*</span></label>
+                        <input type="url" name="token_endpoint" id="token_endpoint"
+                               value="{{ provider.token_endpoint }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                    </div>
+
+                    <div>
+                        <label for="userinfo_endpoint" class="block text-sm font-medium text-gray-500">UserInfo Endpoint</label>
+                        <input type="url" name="userinfo_endpoint" id="userinfo_endpoint"
+                               value="{{ provider.userinfo_endpoint }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                    </div>
+
+                    <div>
+                        <label for="scopes" class="block text-sm font-medium text-gray-500">Scopes</label>
+                        <input type="text" name="scopes" id="scopes"
+                               value="{{ provider.scopes }}"
+                               placeholder="openid email profile"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Space-separated list</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 class="text-sm font-medium text-blue-800">Callback URL</h3>
+                <p class="mt-1 text-sm text-blue-700">Register this URL in your OAuth provider settings:</p>
+                <p class="mt-2 font-mono text-xs text-blue-600 break-all">{{ app_url }}/oauth/callback/{{ provider.id }}</p>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <a href="/service-admin/providers" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,203 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Gift Aid Claim - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Gift Aid Claim</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    <div class="flex items-center space-x-4">
+        {% if claim.status == 'draft' and permissions.giftaid_manage_claims %}
+        <a href="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/edit" 
+           class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+            Edit Claim
+        </a>
+        {% endif %}
+        <a href="/charity/{{ charity.id }}/giftaid/claims" class="text-sm text-blue-600 hover:text-blue-800">← Back to Claims</a>
+    </div>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<!-- Claim Details -->
+<div class="bg-white rounded-lg shadow mb-6">
+    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div>
+            <h2 class="text-lg font-medium text-gray-900">Claim Details</h2>
+            <p class="text-sm text-gray-500">Period: {{ claim.claim_period_start }} to {{ claim.claim_period_end }}</p>
+        </div>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium 
+            {{ claim.status == 'submitted' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
+            {{ claim.status|capitalize }}
+        </span>
+    </div>
+    
+    <div class="p-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Total Donations</p>
+                <p class="text-2xl font-semibold text-gray-900">£{{ claim.total_donations|number_format(2) }}</p>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-500">Gift Aid Claimable</p>
+                <p class="text-2xl font-semibold text-green-600">£{{ claim.total_giftaid|number_format(2) }}</p>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-500">Transactions</p>
+                <p class="text-2xl font-semibold text-gray-900">{{ claim.transaction_count }}</p>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-500">Created</p>
+                <p class="text-lg text-gray-900">{{ claim.created_at|date('d M Y') }}</p>
+            </div>
+        </div>
+        
+        {% if claim.hmrc_reference %}
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <p class="text-sm font-medium text-gray-500">HMRC Reference</p>
+            <p class="text-lg text-gray-900">{{ claim.hmrc_reference }}</p>
+        </div>
+        {% endif %}
+        
+        {% if claim.submitted_at %}
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <p class="text-sm font-medium text-gray-500">Submitted</p>
+            <p class="text-lg text-gray-900">{{ claim.submitted_at|date('d M Y H:i') }}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Actions -->
+{% if permissions.giftaid_manage_claims %}
+<div class="bg-white rounded-lg shadow mb-6 p-6">
+    <h3 class="text-lg font-medium text-gray-900 mb-4">Actions</h3>
+    
+    {% if claim.status == 'draft' %}
+    <form method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/submit" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label for="reference" class="block text-sm font-medium text-gray-700">HMRC Reference (optional)</label>
+            <input type="text" name="reference" id="reference" placeholder="e.g. CHARXXXXX"
+                   class="mt-1 block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <p class="mt-1 text-sm text-gray-500">Enter the reference after submitting to HMRC</p>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
+            Mark as Submitted to HMRC
+        </button>
+    </form>
+    {% else %}
+    <form method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/unsubmit" 
+          onsubmit="return confirm('Are you sure you want to revert this claim to draft status?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            Revert to Draft
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Transactions - HMRC Schedule Format -->
+<div class="bg-white rounded-lg shadow">
+    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div>
+            <h2 class="text-lg font-medium text-gray-900">HMRC Gift Aid Schedule</h2>
+            <p class="text-sm text-gray-500">Formatted for transcription to HMRC spreadsheet</p>
+        </div>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Donor Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">House/No.</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Postcode</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Type</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for t in transactions %}
+                <tr>
+                    <td class="px-4 py-3 text-gray-900">
+                        {% if t.giftaid_status == 'gasds' %}
+                            <span class="text-gray-400 italic">Aggregated small donations</span>
+                        {% else %}
+                            {{ t.donor_name ?: '—' }}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">
+                        {% if t.giftaid_status != 'gasds' %}
+                            {{ t.address_line1 ?: '—' }}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">
+                        {% if t.giftaid_status != 'gasds' %}
+                            {{ t.address_postcode ?: '—' }}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ t.transaction_date }}</td>
+                    <td class="px-4 py-3 text-right text-gray-900 whitespace-nowrap">£{{ t.amount|number_format(2) }}</td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium 
+                            {{ t.giftaid_status == 'gasds' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800' }}">
+                            {{ t.giftaid_status == 'gasds' ? 'GASDS' : 'Gift Aid' }}
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="px-4 py-8 text-center text-gray-500">No transactions in this claim</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="bg-gray-50">
+                <tr class="font-semibold">
+                    <td colspan="4" class="px-4 py-4 text-gray-900">Total</td>
+                    <td class="px-4 py-4 text-right text-gray-900">£{{ claim.total_donations|number_format(2) }}</td>
+                    <td class="px-4 py-4 text-center text-green-600">= £{{ claim.total_giftaid|number_format(2) }} GA</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    
+    {# Additional details for reference #}
+    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <details class="text-sm">
+            <summary class="cursor-pointer text-gray-600 hover:text-gray-900">View transaction descriptions</summary>
+            <table class="mt-3 w-full text-sm">
+                <thead>
+                    <tr class="text-gray-500">
+                        <th class="text-left py-1">Date</th>
+                        <th class="text-left py-1">Description</th>
+                        <th class="text-right py-1">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-600">
+                    {% for t in transactions %}
+                    <tr>
+                        <td class="py-1">{{ t.transaction_date }}</td>
+                        <td class="py-1">{{ t.description }}</td>
+                        <td class="py-1 text-right">£{{ t.amount|number_format(2) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+    </div>
+</div>
+
+<div class="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+    <h4 class="text-sm font-medium text-yellow-800">HMRC Schedule Notes</h4>
+    <ul class="mt-2 text-sm text-yellow-700 list-disc list-inside space-y-1">
+        <li>Standard Gift Aid requires: Donor name, house name/number, postcode, date, and amount</li>
+        <li>GASDS donations don't require donor details - enter as "Aggregated small donations"</li>
+        <li>If a donor is missing address details, you'll need to add them before claiming</li>
+        <li>Download the official HMRC schedule spreadsheet from <a href="https://www.gov.uk/government/publications/gift-aid-schedule-spreadsheets-to-claim-back-tax-on-donations" target="_blank" class="underline">GOV.UK</a></li>
+    </ul>
+</div>
+{% endblock %}

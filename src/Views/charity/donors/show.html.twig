@@ -1,0 +1,232 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}{{ donor.name }} - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">{{ donor.name }}</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    <div class="space-x-2">
+        {% if permissions.donors_edit %}
+            <a href="/charity/{{ charity.id }}/donors/{{ donor.id }}/edit" 
+               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Edit
+            </a>
+        {% endif %}
+        <a href="/charity/{{ charity.id }}/donors" 
+           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            Back to List
+        </a>
+    </div>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Donor Details -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Contact Details</h2>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Name</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ donor.name }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Email</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ donor.email ?: '-' }}</dd>
+                    </div>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Address</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {% if donor.address_line1 %}
+                            {{ donor.address_line1 }}<br>
+                            {% if donor.address_line2 %}{{ donor.address_line2 }}<br>{% endif %}
+                            {{ donor.address_city }} {{ donor.address_postcode }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </dd>
+                </div>
+                {% if donor.notes %}
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Notes</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ donor.notes }}</dd>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Donations -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Donations</h2>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% if donations is empty %}
+                    <div class="px-6 py-8 text-center text-gray-500">
+                        No donations recorded
+                    </div>
+                {% else %}
+                    {% for donation in donations %}
+                        <div class="px-6 py-4">
+                            <div class="flex justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">{{ donation.description }}</p>
+                                    <p class="text-xs text-gray-500">{{ donation.transaction_date }} · {{ donation.fund_name }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-medium text-green-600">£{{ donation.amount|number_format(2) }}</p>
+                                    {% if donation.giftaid_status == 'claimed' %}
+                                        <span class="text-xs text-green-600">GA Claimed</span>
+                                    {% elseif donation.giftaid_status == 'eligible' %}
+                                        <span class="text-xs text-yellow-600">GA Eligible</span>
+                                    {% elseif donation.giftaid_status == 'gasds' %}
+                                        <span class="text-xs text-purple-600">GASDS</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Gift Aid -->
+    <div class="space-y-6">
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Gift Aid</h2>
+            </div>
+            <div class="px-6 py-4">
+                {% set has_active = false %}
+                {% for dec in declarations %}
+                    {% if not dec.withdrawn_date %}
+                        {% set has_active = true %}
+                    {% endif %}
+                {% endfor %}
+                
+                {% if has_active %}
+                    <div class="flex items-center mb-4">
+                        <svg class="h-8 w-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="ml-2 text-lg font-medium text-green-700">Active Declaration</span>
+                    </div>
+                {% else %}
+                    <div class="flex items-center mb-4">
+                        <svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="ml-2 text-lg font-medium text-gray-500">No Active Declaration</span>
+                    </div>
+                {% endif %}
+
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Declaration History</h3>
+                {% if declarations is empty %}
+                    <p class="text-sm text-gray-500">No declarations on record</p>
+                {% else %}
+                    <div class="space-y-2">
+                        {% for dec in declarations %}
+                            <div class="text-sm p-2 rounded {{ dec.withdrawn_date ? 'bg-gray-100' : 'bg-green-50' }}">
+                                <p class="font-medium">
+                                    Started: {{ dec.start_date }}
+                                    {% if dec.covers_past_donations %}
+                                        <span class="text-xs text-gray-500">(covers past)</span>
+                                    {% endif %}
+                                    {% if not dec.withdrawn_date %}
+                                        <span class="text-green-600 ml-1">(Active)</span>
+                                    {% endif %}
+                                </p>
+                                {% if dec.withdrawn_date %}
+                                    <p class="text-gray-600">Withdrawn: {{ dec.withdrawn_date }}</p>
+                                {% endif %}
+                                {% if dec.notes %}
+                                    <p class="text-gray-500 text-xs mt-1">{{ dec.notes }}</p>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Linked Member -->
+        {% if enabled_modules.members is defined and enabled_modules.members.is_enabled %}
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Member Record</h2>
+            </div>
+            <div class="px-6 py-4">
+                {% if linked_member %}
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">{{ linked_member.name }}</p>
+                            {% if linked_member.member_number %}
+                                <p class="text-xs text-gray-500">#{{ linked_member.member_number }}</p>
+                            {% endif %}
+                            {% if not linked_member.is_active %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">Inactive</span>
+                            {% endif %}
+                        </div>
+                        <a href="/charity/{{ charity.id }}/members/{{ linked_member.id }}" 
+                           class="text-sm text-blue-600 hover:text-blue-800">View Member</a>
+                    </div>
+                {% else %}
+                    <p class="text-sm text-gray-500">No linked member record.</p>
+                    {% if permissions.members_create %}
+                    <form method="post" action="/charity/{{ charity.id }}/donors/{{ donor.id }}/create-member" class="mt-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="w-full px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700">
+                            Create Member Record
+                        </button>
+                    </form>
+                    <p class="text-xs text-gray-400 mt-2">Creates a member from this donor's details.</p>
+                    {% else %}
+                    <p class="text-xs text-gray-400 mt-1">Link from the member's profile page.</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Privacy / GDPR Actions -->
+        {% if can_export_privacy or can_delete_privacy %}
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Privacy</h2>
+            </div>
+            <div class="px-6 py-4 space-y-2">
+                {% if can_export_privacy %}
+                <a href="/charity/{{ charity.id }}/donors/{{ donor.id }}/privacy/export" 
+                   class="block w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Export Data (SAR)
+                </a>
+                {% endif %}
+                {% if can_delete_privacy %}
+                <a href="/charity/{{ charity.id }}/donors/{{ donor.id }}/privacy/delete" 
+                   class="block w-full text-center px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50">
+                    Request Deletion
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Metadata -->
+        <div class="text-xs text-gray-500 px-4">
+            <p>Added: {{ donor.created_at }}</p>
+            {% if donor.updated_at != donor.created_at %}
+                <p>Last updated: {{ donor.updated_at }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,296 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Set Up Cash Books - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Set Up Cash Books</h1>
+        <p class="text-sm text-gray-500">
+            {% if is_reenable %}
+                Welcome back! Let's get your cash books set up again.
+            {% else %}
+                Track your bank accounts, petty cash, and other money sources.
+            {% endif %}
+        </p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    {% if gap_info %}
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div class="flex">
+                <svg class="h-5 w-5 text-yellow-400 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <h3 class="text-sm font-medium text-yellow-800">Gap Period Detected</h3>
+                    <p class="mt-1 text-sm text-yellow-700">
+                        Cash books was last active on {{ gap_info.last_activity_date|date('d M Y') }}.
+                        You have {{ gap_info.unassigned_since_then }} transaction(s) since then that need assignment.
+                    </p>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <form action="/charity/{{ charity.id }}/cashbooks/setup" method="POST" id="setup-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <!-- Step 1: Create Cash Books -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Step 1: Create Your Cash Books</h2>
+                <p class="text-sm text-gray-500">Add your bank accounts, petty cash tins, and other money sources.</p>
+            </div>
+            
+            {% if existing_cashbooks|length > 0 %}
+                <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                    <p class="text-sm text-gray-600">
+                        <strong>Existing cash books:</strong>
+                        {% for cb in existing_cashbooks %}
+                            {{ cb.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </p>
+                </div>
+            {% endif %}
+
+            <div class="px-6 py-4">
+                <div id="cashbook-list" class="space-y-4">
+                    <div class="cashbook-row grid grid-cols-12 gap-4 items-end">
+                        <div class="col-span-4">
+                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <input type="text" name="cashbooks[0][name]" placeholder="e.g., Main Bank Account"
+                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-700">Type</label>
+                            <select name="cashbooks[0][book_type]"
+                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="bank">Bank</option>
+                                <option value="cash">Petty Cash</option>
+                                <option value="online">Online</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-700">Opening Balance</label>
+                            <div class="mt-1 relative rounded-md shadow-sm">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <span class="text-gray-500 sm:text-sm">£</span>
+                                </div>
+                                <input type="number" step="0.01" name="cashbooks[0][opening_balance]" value="0.00"
+                                       class="pl-7 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            </div>
+                        </div>
+                        <div class="col-span-3">
+                            <label class="block text-sm font-medium text-gray-700">As of Date</label>
+                            <input type="date" name="cashbooks[0][opening_balance_date]" value="{{ "now"|date("Y-m-d") }}"
+                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div class="col-span-1 text-right">
+                            <button type="button" class="remove-cashbook text-red-600 hover:text-red-900" title="Remove" style="display: none;">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="button" id="add-cashbook" class="mt-4 text-sm text-blue-600 hover:text-blue-900 font-medium">
+                    + Add another cash book
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Choose How to Handle Historical Transactions -->
+        {% if transaction_count > 0 %}
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Step 2: Historical Transactions</h2>
+                    <p class="text-sm text-gray-500">
+                        You have {{ transaction_count }} existing transaction(s). How would you like to handle them?
+                    </p>
+                </div>
+                
+                <div class="px-6 py-4 space-y-4">
+                    <label class="flex items-start p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="action" value="start_fresh" checked
+                               class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <div class="ml-3">
+                            <span class="block text-sm font-medium text-gray-900">Start Fresh</span>
+                            <span class="block text-sm text-gray-500">
+                                Enter today's balances and track from now on. Historical transactions won't be assigned to cash books.
+                            </span>
+                        </div>
+                    </label>
+                    
+                    <label class="flex items-start p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="action" value="assign_historical"
+                               class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <div class="ml-3">
+                            <span class="block text-sm font-medium text-gray-900">Assign Historical Transactions</span>
+                            <span class="block text-sm text-gray-500">
+                                Map your funds to cash books to automatically assign historical transactions.
+                            </span>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Fund Mapping (shown when assign_historical is selected) -->
+                <div id="fund-mapping" class="hidden px-6 py-4 border-t border-gray-200 bg-gray-50">
+                    <h3 class="text-sm font-medium text-gray-900 mb-3">Map Funds to Cash Books</h3>
+                    <p class="text-xs text-gray-500 mb-4">
+                        Select which cash book should receive transactions for each fund. 
+                        Leave blank to skip a fund.
+                    </p>
+                    
+                    <div class="space-y-3">
+                        {% for fund in funds %}
+                            <div class="flex items-center space-x-4">
+                                <span class="w-40 text-sm text-gray-700">{{ fund.name }}</span>
+                                <select name="fund_mapping[{{ fund.id }}]" class="fund-mapping-select flex-1 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option value="">Don't assign</option>
+                                    {# Options populated by JavaScript based on created cashbooks #}
+                                </select>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <input type="hidden" name="action" value="start_fresh">
+        {% endif %}
+
+        <!-- Submit -->
+        <div class="flex justify-between">
+            <a href="/charity/{{ charity.id }}/settings/modules" 
+               class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                Complete Setup
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    let cashbookIndex = 1;
+    const cashbookList = document.getElementById('cashbook-list');
+    const addButton = document.getElementById('add-cashbook');
+    const fundMappingDiv = document.getElementById('fund-mapping');
+    const radioButtons = document.querySelectorAll('input[name="action"]');
+
+    // Add cashbook row
+    addButton.addEventListener('click', function() {
+        const template = cashbookList.querySelector('.cashbook-row').cloneNode(true);
+        
+        // Update input names and clear values
+        template.querySelectorAll('input, select').forEach(function(input) {
+            if (input.name) {
+                input.name = input.name.replace(/\[\d+\]/, '[' + cashbookIndex + ']');
+            }
+            if (input.type === 'text' || input.type === 'number') {
+                input.value = input.type === 'number' ? '0.00' : '';
+            }
+            if (input.type === 'date') {
+                input.value = new Date().toISOString().split('T')[0];
+            }
+        });
+
+        // Show remove button
+        template.querySelector('.remove-cashbook').style.display = 'block';
+        
+        cashbookList.appendChild(template);
+        cashbookIndex++;
+        
+        updateRemoveButtons();
+        updateFundMappingOptions();
+    });
+
+    // Remove cashbook row
+    cashbookList.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-cashbook')) {
+            const row = e.target.closest('.cashbook-row');
+            if (cashbookList.querySelectorAll('.cashbook-row').length > 1) {
+                row.remove();
+                updateRemoveButtons();
+                updateFundMappingOptions();
+            }
+        }
+    });
+
+    // Update remove button visibility
+    function updateRemoveButtons() {
+        const rows = cashbookList.querySelectorAll('.cashbook-row');
+        rows.forEach(function(row, index) {
+            const btn = row.querySelector('.remove-cashbook');
+            btn.style.display = rows.length > 1 ? 'block' : 'none';
+        });
+    }
+
+    // Update fund mapping options based on created cashbooks
+    function updateFundMappingOptions() {
+        const selects = document.querySelectorAll('.fund-mapping-select');
+        const cashbooks = [];
+        
+        cashbookList.querySelectorAll('.cashbook-row').forEach(function(row) {
+            const nameInput = row.querySelector('input[name*="[name]"]');
+            if (nameInput && nameInput.value.trim()) {
+                cashbooks.push(nameInput.value.trim());
+            }
+        });
+
+        selects.forEach(function(select) {
+            const currentValue = select.value;
+            // Keep first option
+            select.innerHTML = '<option value="">Don\'t assign</option>';
+            
+            cashbooks.forEach(function(name, index) {
+                const option = document.createElement('option');
+                option.value = 'new_' + index;
+                option.textContent = name + ' (new)';
+                select.appendChild(option);
+            });
+
+            {% for cb in existing_cashbooks %}
+                const existingOption{{ cb.id }} = document.createElement('option');
+                existingOption{{ cb.id }}.value = '{{ cb.id }}';
+                existingOption{{ cb.id }}.textContent = '{{ cb.name }}';
+                select.appendChild(existingOption{{ cb.id }});
+            {% endfor %}
+        });
+    }
+
+    // Show/hide fund mapping based on radio selection
+    if (radioButtons.length > 0) {
+        radioButtons.forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                if (this.value === 'assign_historical') {
+                    fundMappingDiv.classList.remove('hidden');
+                    updateFundMappingOptions();
+                } else {
+                    fundMappingDiv.classList.add('hidden');
+                }
+            });
+        });
+    }
+
+    // Update options when cashbook names change
+    cashbookList.addEventListener('input', function(e) {
+        if (e.target.name && e.target.name.includes('[name]')) {
+            updateFundMappingOptions();
+        }
+    });
+
+    // Initial setup
+    updateRemoveButtons();
+})();
+</script>
+{% endblock %}

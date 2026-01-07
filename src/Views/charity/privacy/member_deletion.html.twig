@@ -1,0 +1,164 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Data Deletion - {{ member.name }} - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <nav class="text-sm text-gray-500 mb-2">
+            <a href="/charity/{{ charity.id }}/members" class="hover:text-gray-700">Members</a>
+            <span class="mx-2">/</span>
+            <a href="/charity/{{ charity.id }}/members/{{ member.id }}" class="hover:text-gray-700">{{ member.name }}</a>
+            <span class="mx-2">/</span>
+            <span>Data Deletion</span>
+        </nav>
+        <h1 class="text-2xl font-bold text-gray-900">Data Deletion Request</h1>
+        <p class="text-sm text-gray-500">GDPR Right to Erasure - {{ member.name }}</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <!-- Data Summary -->
+    <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Data Held</h2>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-gray-600 mb-4">The following personal data is held for this member:</p>
+            <ul class="space-y-2 text-sm">
+                {% if data_summary.member > 0 %}
+                <li class="flex items-center">
+                    <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    Member record (name, address, contact details)
+                </li>
+                {% endif %}
+                {% if data_summary.trustee_history > 0 %}
+                <li class="flex items-center">
+                    <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    {{ data_summary.trustee_history }} trustee role record(s)
+                </li>
+                {% endif %}
+                {% if data_summary.membership_dues > 0 %}
+                <li class="flex items-center">
+                    <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    {{ data_summary.membership_dues }} membership dues record(s)
+                </li>
+                {% endif %}
+                {% if data_summary.audit_log > 0 %}
+                <li class="flex items-center">
+                    <svg class="w-4 h-4 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    {{ data_summary.audit_log }} audit log entries
+                </li>
+                {% endif %}
+                {% if data_summary.linked_donor > 0 %}
+                <li class="flex items-center text-amber-600">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                    Linked to a donor record
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Retention Warning -->
+    {% if not deletion_check.can_delete %}
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <svg class="w-5 h-5 text-amber-400 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            <div>
+                <h3 class="text-sm font-medium text-amber-800">Retention Period Applies</h3>
+                <div class="mt-2 text-sm text-amber-700">
+                    <p>This data cannot be fully deleted due to legal retention requirements:</p>
+                    <ul class="list-disc pl-5 mt-2 space-y-1">
+                        {% for reason in deletion_check.reasons %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% if deletion_check.earliest_deletion_date %}
+                    <p class="mt-2 font-medium">Earliest deletion date: {{ deletion_check.earliest_deletion_date }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Anonymisation Form -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">
+                {% if deletion_check.can_delete %}Delete{% else %}Anonymise{% endif %} Personal Data
+            </h2>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-gray-600 mb-4">
+                {% if deletion_check.can_delete %}
+                This will permanently delete all personal data for this member. Financial records will be anonymised to maintain accounting integrity.
+                {% else %}
+                Due to retention requirements, personal data will be <strong>anonymised</strong> rather than deleted. The member's name will be replaced with "Anonymised Member #{{ member.id }}" and all contact details will be removed.
+                {% endif %}
+            </p>
+
+            <div class="bg-gray-50 rounded-md p-4 mb-4">
+                <h4 class="text-sm font-medium text-gray-900 mb-2">What will happen:</h4>
+                <ul class="text-sm text-gray-600 space-y-1">
+                    <li>• Name replaced with "Anonymised Member #{{ member.id }}"</li>
+                    <li>• Email and phone removed</li>
+                    <li>• Postal address removed</li>
+                    <li>• Notes cleared</li>
+                    <li>• Membership dues records retained (amounts, dates) for compliance</li>
+                    <li>• Trustee role history retained (dates only)</li>
+                </ul>
+            </div>
+
+            <form method="post" action="/charity/{{ charity.id }}/members/{{ member.id }}/privacy/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                {% if member.donor_id %}
+                <div class="mb-4 p-4 bg-blue-50 rounded-md">
+                    <label class="flex items-start">
+                        <input type="checkbox" name="include_linked_donor" value="1"
+                               class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-700">
+                            Also anonymise the linked donor record
+                        </span>
+                    </label>
+                </div>
+                {% endif %}
+
+                <div class="mb-4">
+                    <label class="flex items-start">
+                        <input type="checkbox" name="confirm_anonymisation" value="1" required
+                               class="mt-1 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                        <span class="ml-2 text-sm text-gray-700">
+                            I confirm this is in response to a valid data subject request (SAR) and I understand this action cannot be undone.
+                        </span>
+                    </label>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <a href="/charity/{{ charity.id }}/members/{{ member.id }}" 
+                       class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                        {% if deletion_check.can_delete %}Delete{% else %}Anonymise{% endif %} Data
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Export Option -->
+    <div class="mt-6 text-center">
+        <p class="text-sm text-gray-500 mb-2">Need to provide a copy of the data first?</p>
+        <a href="/charity/{{ charity.id }}/members/{{ member.id }}/privacy/export" 
+           class="text-sm text-blue-600 hover:text-blue-800">
+            Download Personal Data Export
+        </a>
+    </div>
+</div>
+{% endblock %}

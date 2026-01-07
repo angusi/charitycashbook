@@ -1,0 +1,205 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Add OAuth Provider - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Add OAuth Provider</h1>
+        <p class="text-sm text-gray-500">Configure a new login provider</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Form -->
+        <div class="lg:col-span-2 bg-white rounded-lg shadow p-6">
+            <form method="post" action="/service-admin/providers" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div>
+                    <label for="provider_type" class="block text-sm font-medium text-gray-700">Provider Type <span class="text-red-500">*</span></label>
+                    <select name="provider_type" id="provider_type" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                            onchange="updateHelpText(this.value)">
+                        <option value="">Select a provider</option>
+                        {% for type in provider_types %}
+                            <option value="{{ type }}">{{ type|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Display Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" required maxlength="100"
+                           placeholder="e.g., Google Login"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Shown to users on the login page</p>
+                </div>
+
+                <div>
+                    <label for="client_id" class="block text-sm font-medium text-gray-700">Client ID <span class="text-red-500">*</span></label>
+                    <input type="text" name="client_id" id="client_id" required maxlength="500"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+                </div>
+
+                <div>
+                    <label for="client_secret" class="block text-sm font-medium text-gray-700">Client Secret <span class="text-red-500">*</span></label>
+                    <input type="password" name="client_secret" id="client_secret" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+                </div>
+
+                <div id="tenant_id_field" class="hidden">
+                    <label for="tenant_id" class="block text-sm font-medium text-gray-700">Tenant ID <span class="text-red-500">*</span></label>
+                    <input type="text" name="tenant_id" id="tenant_id" maxlength="100"
+                           placeholder="e.g., common, organizations, or your tenant ID"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Use "common" for any Microsoft account, "organizations" for work accounts only, or a specific tenant ID</p>
+                </div>
+
+                <div id="oidc_fields" class="hidden space-y-4 p-4 bg-gray-50 rounded-lg">
+                    <p class="text-sm font-medium text-gray-700">OIDC Endpoints</p>
+                    
+                    <div>
+                        <label for="authorization_endpoint" class="block text-sm font-medium text-gray-700">Authorization Endpoint <span class="text-red-500">*</span></label>
+                        <input type="url" name="authorization_endpoint" id="authorization_endpoint"
+                               placeholder="https://example.com/oauth2/authorize"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                    </div>
+                    
+                    <div>
+                        <label for="token_endpoint" class="block text-sm font-medium text-gray-700">Token Endpoint <span class="text-red-500">*</span></label>
+                        <input type="url" name="token_endpoint" id="token_endpoint"
+                               placeholder="https://example.com/oauth2/token"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                    </div>
+                    
+                    <div>
+                        <label for="userinfo_endpoint" class="block text-sm font-medium text-gray-500">UserInfo Endpoint</label>
+                        <input type="url" name="userinfo_endpoint" id="userinfo_endpoint"
+                               placeholder="https://example.com/oauth2/userinfo"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono text-xs">
+                        <p class="mt-1 text-xs text-gray-500">Optional but recommended for fetching user profile</p>
+                    </div>
+                    
+                    <div>
+                        <label for="scopes" class="block text-sm font-medium text-gray-500">Scopes</label>
+                        <input type="text" name="scopes" id="scopes"
+                               placeholder="openid email profile"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Space-separated list. Defaults to "openid email profile"</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center">
+                    <input type="checkbox" name="is_enabled" id="is_enabled" value="1" checked
+                           class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                    <label for="is_enabled" class="ml-2 block text-sm text-gray-900">Enable this provider</label>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-blue-800">Callback URL</h3>
+                    <p class="mt-1 text-sm text-blue-700">After creating this provider, you'll need to add this callback URL to your OAuth app settings:</p>
+                    <p class="mt-2 font-mono text-xs text-blue-600 break-all">{{ app_url }}/oauth/callback/[ID]</p>
+                    <p class="mt-1 text-xs text-blue-600">(The ID will be shown after you save)</p>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                    <a href="/service-admin/providers" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Add Provider
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Help Panel -->
+        <div class="space-y-4">
+            <div id="help-default" class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-sm font-medium text-gray-900">Setup Instructions</h3>
+                <p class="mt-2 text-sm text-gray-600">Select a provider type to see setup instructions.</p>
+            </div>
+
+            <div id="help-google" class="bg-gray-50 rounded-lg p-4 hidden">
+                <h3 class="text-sm font-medium text-gray-900">Google OAuth Setup</h3>
+                <ol class="mt-2 text-sm text-gray-600 space-y-2 list-decimal list-inside">
+                    <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-blue-600 hover:underline">Google Cloud Console</a></li>
+                    <li>Create a new project or select existing</li>
+                    <li>Go to "Credentials" → "Create Credentials" → "OAuth client ID"</li>
+                    <li>Select "Web application"</li>
+                    <li>Add authorized redirect URI (shown after saving)</li>
+                    <li>Copy the Client ID and Client Secret</li>
+                </ol>
+                <div class="mt-3 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+                    <strong>Note:</strong> You may need to configure the OAuth consent screen first.
+                </div>
+            </div>
+
+            <div id="help-microsoft" class="bg-gray-50 rounded-lg p-4 hidden">
+                <h3 class="text-sm font-medium text-gray-900">Microsoft OAuth Setup</h3>
+                <ol class="mt-2 text-sm text-gray-600 space-y-2 list-decimal list-inside">
+                    <li>Go to <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" class="text-blue-600 hover:underline">Azure Portal App Registrations</a></li>
+                    <li>Click "New registration"</li>
+                    <li>Enter a name and select account types</li>
+                    <li>Add redirect URI as "Web" type</li>
+                    <li>Go to "Certificates & secrets" → "New client secret"</li>
+                    <li>Copy the Application (client) ID and secret value</li>
+                </ol>
+                <div class="mt-3 p-2 bg-blue-50 rounded text-xs text-blue-800">
+                    <strong>Tenant ID:</strong> Use "common" for any account, "organizations" for work/school only, "consumers" for personal only.
+                </div>
+            </div>
+
+            <div id="help-oidc" class="bg-gray-50 rounded-lg p-4 hidden">
+                <h3 class="text-sm font-medium text-gray-900">Generic OIDC Setup</h3>
+                <p class="mt-2 text-sm text-gray-600">
+                    Use this for any OpenID Connect compatible identity provider (Okta, Auth0, Keycloak, etc.)
+                </p>
+                <div class="mt-3 text-sm text-gray-600">
+                    <p class="font-medium">Required endpoints:</p>
+                    <ul class="mt-1 list-disc list-inside text-xs space-y-1">
+                        <li><strong>Authorization Endpoint</strong> - Where users are redirected to log in</li>
+                        <li><strong>Token Endpoint</strong> - Where tokens are exchanged</li>
+                        <li><strong>UserInfo Endpoint</strong> - Where user profile is fetched (optional but recommended)</li>
+                    </ul>
+                </div>
+                <div class="mt-3 p-2 bg-blue-50 rounded text-xs text-blue-800">
+                    <strong>Tip:</strong> Check your provider's documentation for their OIDC discovery endpoint (usually <code>/.well-known/openid-configuration</code>) to find these URLs.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateHelpText(provider) {
+    // Hide all help panels and optional fields
+    document.getElementById('help-default').classList.add('hidden');
+    document.getElementById('help-google').classList.add('hidden');
+    document.getElementById('help-microsoft').classList.add('hidden');
+    document.getElementById('help-oidc').classList.add('hidden');
+    document.getElementById('tenant_id_field').classList.add('hidden');
+    document.getElementById('oidc_fields').classList.add('hidden');
+    
+    // Reset required attributes
+    document.getElementById('tenant_id').required = false;
+    document.getElementById('authorization_endpoint').required = false;
+    document.getElementById('token_endpoint').required = false;
+    
+    // Show relevant help panel and fields
+    if (provider === 'google') {
+        document.getElementById('help-google').classList.remove('hidden');
+    } else if (provider === 'microsoft') {
+        document.getElementById('help-microsoft').classList.remove('hidden');
+        document.getElementById('tenant_id_field').classList.remove('hidden');
+        document.getElementById('tenant_id').required = true;
+    } else if (provider === 'oidc') {
+        document.getElementById('help-oidc').classList.remove('hidden');
+        document.getElementById('oidc_fields').classList.remove('hidden');
+        document.getElementById('authorization_endpoint').required = true;
+        document.getElementById('token_endpoint').required = true;
+    } else {
+        document.getElementById('help-default').classList.remove('hidden');
+    }
+}
+</script>
+{% endblock %}

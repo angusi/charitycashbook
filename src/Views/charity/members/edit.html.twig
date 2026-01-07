@@ -1,0 +1,190 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}{{ member ? 'Edit' : 'Add' }} Member - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <div class="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+        <a href="/charity/{{ charity.id }}/members" class="hover:text-gray-700">Members</a>
+        <span>›</span>
+        <span>{{ member ? 'Edit' : 'Add' }} Member</span>
+    </div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ member ? 'Edit' : 'Add' }} Member</h1>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<form method="post" action="{{ member ? '/charity/' ~ charity.id ~ '/members/' ~ member.id : '/charity/' ~ charity.id ~ '/members' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="space-y-6">
+        <!-- Personal Information -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Personal Information</h2>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Name *</label>
+                    <input type="text" name="name" id="name" required maxlength="255"
+                           value="{{ member.name|default('') }}"
+                           placeholder="e.g. Dr Jane Smith, Rev John Doe"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" name="email" id="email" maxlength="255"
+                               value="{{ member.email|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+                        <input type="tel" name="phone" id="phone" maxlength="50"
+                               value="{{ member.phone|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Address -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Address</h2>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+                <div>
+                    <label for="address_line1" class="block text-sm font-medium text-gray-700">Address Line 1</label>
+                    <input type="text" name="address_line1" id="address_line1" maxlength="200"
+                           value="{{ member.address_line1|default('') }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="address_line2" class="block text-sm font-medium text-gray-700">Address Line 2</label>
+                    <input type="text" name="address_line2" id="address_line2" maxlength="200"
+                           value="{{ member.address_line2|default('') }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="address_city" class="block text-sm font-medium text-gray-700">City/Town</label>
+                        <input type="text" name="address_city" id="address_city" maxlength="100"
+                               value="{{ member.address_city|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="address_county" class="block text-sm font-medium text-gray-700">County</label>
+                        <input type="text" name="address_county" id="address_county" maxlength="100"
+                               value="{{ member.address_county|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="address_postcode" class="block text-sm font-medium text-gray-700">Postcode</label>
+                        <input type="text" name="address_postcode" id="address_postcode" maxlength="20"
+                               value="{{ member.address_postcode|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                </div>
+                {% if member.donor_id %}
+                <div class="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="sync_address_to_donor" value="1"
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-blue-700">Also update address on linked donor record (for Gift Aid)</span>
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Membership Details -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Membership Details</h2>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="member_number" class="block text-sm font-medium text-gray-700">Member Number</label>
+                        <input type="text" name="member_number" id="member_number" maxlength="50"
+                               value="{{ member.member_number|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Leave blank to auto-generate</p>
+                    </div>
+                    <div>
+                        <label for="membership_type" class="block text-sm font-medium text-gray-700">Membership Type</label>
+                        <select name="membership_type" id="membership_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            {% for type in membership_types %}
+                                <option value="{{ type.name }}" {{ member.membership_type == type.name ? 'selected' : '' }}>
+                                    {{ type.name }}{% if type.annual_fee %} (£{{ type.annual_fee|number_format(2) }}/year){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="joined_date" class="block text-sm font-medium text-gray-700">Joined Date</label>
+                        <input type="date" name="joined_date" id="joined_date"
+                               value="{{ member.joined_date|default("now"|date("Y-m-d")) }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                </div>
+
+                {% if member %}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="is_active" value="1" {{ member.is_active ? 'checked' : '' }}
+                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <span class="ml-2 text-sm text-gray-700">Active member</span>
+                        </label>
+                    </div>
+                    <div>
+                        <label for="left_date" class="block text-sm font-medium text-gray-700">Left Date</label>
+                        <input type="date" name="left_date" id="left_date"
+                               value="{{ member.left_date|default('') }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label for="donor_id" class="block text-sm font-medium text-gray-700">Link to Donor Record</label>
+                    <select name="donor_id" id="donor_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="">— No donor link —</option>
+                        {% for donor in donors %}
+                            <option value="{{ donor.id }}" {{ member.donor_id == donor.id ? 'selected' : '' }}>
+                                {{ donor.name }}{% if donor.has_active_declaration %} (Gift Aid){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Link to a donor record to enable Gift Aid on membership fees</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Notes</h2>
+            </div>
+            <div class="px-6 py-4">
+                <textarea name="notes" id="notes" rows="4"
+                          class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ member.notes|default('') }}</textarea>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-end space-x-3">
+            <a href="{{ member ? '/charity/' ~ charity.id ~ '/members/' ~ member.id : '/charity/' ~ charity.id ~ '/members' }}" 
+               class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Cancel
+            </a>
+            <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                {{ member ? 'Update Member' : 'Add Member' }}
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}

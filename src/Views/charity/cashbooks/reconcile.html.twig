@@ -1,0 +1,121 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Reconcile {{ cash_book.name }} - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Reconcile {{ cash_book.name }}</h1>
+    <p class="text-sm text-gray-500">Compare your records against your bank statement or cash count</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Reconciliation Form -->
+    <div class="lg:col-span-1">
+        <form action="/charity/{{ charity.id }}/cashbooks/{{ cash_book.id }}/reconcile" method="POST" class="bg-white rounded-lg shadow">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Statement / Count</h2>
+            </div>
+            
+            <div class="px-6 py-4 space-y-4">
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <p class="text-xs text-gray-500">Expected Balance</p>
+                    <p class="text-2xl font-bold {{ balance.current_balance >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                        £{{ balance.current_balance|number_format(2) }}
+                    </p>
+                    <p class="text-xs text-gray-400">as of {{ balance.as_of_date|date('d M Y') }}</p>
+                </div>
+
+                <div>
+                    <label for="reconciled_date" class="block text-sm font-medium text-gray-700">Statement Date *</label>
+                    <input type="date" name="reconciled_date" id="reconciled_date" required
+                           value="{{ "now"|date("Y-m-d") }}"
+                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Date on bank statement or date of cash count</p>
+                </div>
+
+                <div>
+                    <label for="statement_balance" class="block text-sm font-medium text-gray-700">Actual Balance (£) *</label>
+                    <input type="number" name="statement_balance" id="statement_balance" step="0.01" required
+                           value="{{ balance.current_balance }}"
+                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Balance shown on statement or counted cash</p>
+                </div>
+
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                    <textarea name="notes" id="notes" rows="3"
+                              placeholder="e.g., Statement dated 31 Jan, or Cash count witnessed by..."
+                              class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                </div>
+
+                {% if last_reconciliation %}
+                <div class="border-t pt-4">
+                    <p class="text-xs text-gray-500">Last Reconciled</p>
+                    <p class="text-sm text-gray-900">{{ last_reconciliation.reconciled_date|date('d M Y') }}</p>
+                    <p class="text-sm text-gray-600">Balance: £{{ last_reconciliation.statement_balance|number_format(2) }}</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+                <a href="/charity/{{ charity.id }}/cashbooks/{{ cash_book.id }}" 
+                   class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                    Record Reconciliation
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Unreconciled Transactions -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-lg font-medium text-gray-900">Unreconciled Transactions</h2>
+                <span class="text-sm text-gray-500">{{ transactions|length }} transaction(s)</span>
+            </div>
+            <div class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                {% if transactions is empty %}
+                    <div class="px-6 py-8 text-center text-gray-500">
+                        <svg class="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p class="mt-2">All transactions are reconciled!</p>
+                    </div>
+                {% else %}
+                    {% for t in transactions %}
+                        <div class="px-6 py-3">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">{{ t.description }}</p>
+                                    <p class="text-xs text-gray-500">
+                                        {{ t.transaction_date|date('d M Y') }}
+                                        · {{ t.fund_name }}
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
+                                        {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            {% if transactions|length > 0 %}
+            <div class="px-6 py-3 bg-gray-50 border-t text-xs text-gray-500">
+                These transactions will be marked as reconciled when you record the reconciliation.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

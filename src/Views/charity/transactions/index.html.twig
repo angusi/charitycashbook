@@ -1,0 +1,151 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Transactions - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Transactions</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    {% if permissions.transactions_create %}
+        <div class="space-x-2">
+            <a href="/charity/{{ charity.id }}/transactions/create?type=receipt" 
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700">
+                + Receipt
+            </a>
+            <a href="/charity/{{ charity.id }}/transactions/create?type=payment" 
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700">
+                + Payment
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="get" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700">From Date</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" 
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">To Date</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" 
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Fund</label>
+            <select name="fund_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="">All Funds</option>
+                {% for fund in funds %}
+                    <option value="{{ fund.id }}" {{ filters.fund_id == fund.id ? 'selected' : '' }}>{{ fund.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Type</label>
+            <select name="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="">All Types</option>
+                <option value="receipt" {{ filters.type == 'receipt' ? 'selected' : '' }}>Receipts</option>
+                <option value="payment" {{ filters.type == 'payment' ? 'selected' : '' }}>Payments</option>
+            </select>
+        </div>
+        <div class="flex items-end">
+            <button type="submit" class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Filter
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Summary -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm text-gray-500">Total Receipts</p>
+        <p class="text-xl font-semibold text-green-600">£{{ total_receipts|number_format(2) }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm text-gray-500">Total Payments</p>
+        <p class="text-xl font-semibold text-red-600">£{{ total_payments|number_format(2) }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm text-gray-500">Net</p>
+        <p class="text-xl font-semibold {{ (total_receipts - total_payments) >= 0 ? 'text-green-600' : 'text-red-600' }}">
+            £{{ (total_receipts - total_payments)|number_format(2) }}
+        </p>
+    </div>
+</div>
+
+<!-- Transactions Table -->
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fund</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">GA</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% if transactions is empty %}
+                <tr>
+                    <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                        No transactions found
+                    </td>
+                </tr>
+            {% else %}
+                {% for t in transactions %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ t.transaction_date }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            {{ t.description }}
+                            {% if t.reference %}
+                                <span class="text-gray-500">({{ t.reference }})</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ t.fund_name }}
+                            {% if t.fund_entry_count > 1 %}
+                                <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Split across {{ t.fund_entry_count }} funds">
+                                    +{{ t.fund_entry_count - 1 }}
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ t.category_name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
+                            {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            {% if t.giftaid_status == 'claimed' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">✓</span>
+                            {% elseif t.giftaid_status == 'eligible' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">E</span>
+                            {% elseif t.giftaid_status == 'gasds' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">G</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="/charity/{{ charity.id }}/transactions/{{ t.id }}" class="text-blue-600 hover:text-blue-900">View</a>
+                            {% if permissions.transactions_edit and t.giftaid_status != 'claimed' %}
+                                <a href="/charity/{{ charity.id }}/transactions/{{ t.id }}/edit" class="ml-3 text-blue-600 hover:text-blue-900">Edit</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

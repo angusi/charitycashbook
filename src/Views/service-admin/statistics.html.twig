@@ -1,0 +1,213 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Statistics - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 px-4">
+    <div class="mb-6 flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Statistics</h1>
+            <p class="text-sm text-gray-500">Service-wide metrics and activity</p>
+        </div>
+        <a href="/service-admin" class="text-sm text-blue-600 hover:text-blue-800">← Back to Dashboard</a>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-8">
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Charities</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.charities_active }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Users</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.users_total }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Sessions</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.sessions_active }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Active Today</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.active_users_today }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Logins Today</p>
+            <p class="text-2xl font-semibold text-green-600">{{ stats.logins_today }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Failed Logins</p>
+            <p class="text-2xl font-semibold {{ stats.logins_failed_today > 10 ? 'text-red-600' : 'text-gray-900' }}">{{ stats.logins_failed_today }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <p class="text-xs font-medium text-gray-500">Txns (7d)</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.transactions_week }}</p>
+        </div>
+    </div>
+
+    <!-- Charity Leaderboards -->
+    <h2 class="text-lg font-medium text-gray-900 mb-4">Charity Activity</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Most Active -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Most Active (30 days)</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for charity in leaderboard.most_active[:5] %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <a href="/service-admin/charities/{{ charity.id }}" class="text-sm text-blue-600 hover:text-blue-800 truncate">{{ charity.name }}</a>
+                        <span class="text-xs text-gray-500">{{ charity.action_count }} actions</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No activity</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- By Transactions -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">By Transactions (30 days)</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for charity in leaderboard.by_transactions[:5] %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <a href="/service-admin/charities/{{ charity.id }}" class="text-sm text-blue-600 hover:text-blue-800 truncate">{{ charity.name }}</a>
+                        <span class="text-xs text-gray-500">{{ charity.transaction_count }} txns</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No transactions</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- By Users -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">By Users</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for charity in leaderboard.by_users[:5] %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <a href="/service-admin/charities/{{ charity.id }}" class="text-sm text-blue-600 hover:text-blue-800 truncate">{{ charity.name }}</a>
+                        <span class="text-xs text-gray-500">{{ charity.user_count }} users</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No charities</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Newest -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Recently Added</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for charity in leaderboard.newest %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <a href="/service-admin/charities/{{ charity.id }}" class="text-sm text-blue-600 hover:text-blue-800 truncate">{{ charity.name }}</a>
+                        <span class="text-xs text-gray-500">{{ charity.created_at|date('d M Y') }}</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No charities</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Dormant -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Dormant (30+ days)</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for charity in leaderboard.dormant[:5] %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <a href="/service-admin/charities/{{ charity.id }}" class="text-sm text-blue-600 hover:text-blue-800 truncate">{{ charity.name }}</a>
+                        <span class="text-xs text-gray-500">{{ charity.last_activity ? charity.last_activity|date('d M') : 'Never' }}</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">All charities active!</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Database Storage -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Database Records</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for key, table in storage %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <span class="text-sm text-gray-700">{{ table.label }}</span>
+                        <span class="text-xs text-gray-500">{{ table.count|number_format }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity over time -->
+    <h2 class="text-lg font-medium text-gray-900 mb-4">Activity (Last 7 Days)</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Logins -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Logins</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for day in activity.logins %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <span class="text-sm text-gray-700">{{ day.date|date('D d M') }}</span>
+                        <div class="text-xs">
+                            <span class="text-green-600">{{ day.successful }} ok</span>
+                            {% if day.failed > 0 %}
+                                <span class="text-red-600 ml-2">{{ day.failed }} failed</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No login data</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Transactions -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Transactions</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for day in activity.transactions %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <span class="text-sm text-gray-700">{{ day.date|date('D d M') }}</span>
+                        <span class="text-xs text-gray-500">{{ day.count }}</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No transaction data</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Active Users -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-4 py-3 border-b border-gray-200">
+                <h3 class="text-sm font-medium text-gray-900">Active Users</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for day in activity.active_users %}
+                    <div class="px-4 py-2 flex justify-between items-center">
+                        <span class="text-sm text-gray-700">{{ day.date|date('D d M') }}</span>
+                        <span class="text-xs text-gray-500">{{ day.count }} users</span>
+                    </div>
+                {% else %}
+                    <div class="px-4 py-3 text-sm text-gray-500">No activity data</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

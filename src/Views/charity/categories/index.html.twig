@@ -1,0 +1,157 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Categories - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Categories</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    {% if permissions.categories_manage %}
+        <div class="space-x-2">
+            <a href="/charity/{{ charity.id }}/categories/reporting/create" 
+               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                + Reporting Category
+            </a>
+            <a href="/charity/{{ charity.id }}/categories/operational/create" 
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                + Operational Category
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="space-y-8">
+    <!-- Receipt Categories -->
+    <div>
+        <h2 class="text-xl font-bold text-green-700 mb-4 flex items-center">
+            <svg class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+            </svg>
+            Receipt Categories
+        </h2>
+        
+        {% set receipt_categories = reporting_categories|filter(c => c.category_type == 'receipt') %}
+        {% if receipt_categories is empty %}
+            <div class="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+                No receipt categories configured
+            </div>
+        {% else %}
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                {% for rc in receipt_categories %}
+                    <div class="border-b border-gray-200 last:border-b-0">
+                        <div class="px-6 py-4 bg-green-50 flex justify-between items-center">
+                            <h3 class="font-medium text-gray-900">{{ rc.name }}</h3>
+                            {% if permissions.categories_manage %}
+                            <div class="flex space-x-2">
+                                <a href="/charity/{{ charity.id }}/categories/reporting/{{ rc.id }}/edit" 
+                                   class="text-sm text-blue-600 hover:text-blue-800">Edit</a>
+                                <form id="hide-receipt-rc-{{ rc.id }}" method="post" action="/charity/{{ charity.id }}/categories/reporting/{{ rc.id }}/hide" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="button" onclick="confirmAndSubmit('hide-receipt-rc-{{ rc.id }}', 'Hide Category', 'Hide this category and all its operational categories?')" class="text-sm text-red-600 hover:text-red-800">Hide</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            {% for oc in operational_by_reporting[rc.id] %}
+                                <div class="px-6 py-3 pl-12 flex justify-between items-center hover:bg-gray-50">
+                                    <div>
+                                        <span class="text-sm text-gray-700">{{ oc.name }}</span>
+                                        {% if oc.giftaid_eligible_default %}
+                                            <span class="ml-2 text-xs text-green-600">GA Default</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if permissions.categories_manage %}
+                                    <div class="flex space-x-2">
+                                        <a href="/charity/{{ charity.id }}/categories/operational/{{ oc.id }}/edit" 
+                                           class="text-xs text-blue-600 hover:text-blue-800">Edit</a>
+                                        <form id="hide-receipt-oc-{{ oc.id }}" method="post" action="/charity/{{ charity.id }}/categories/operational/{{ oc.id }}/hide" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="button" onclick="confirmAndSubmit('hide-receipt-oc-{{ oc.id }}', 'Hide Category', 'Hide this operational category?')" class="text-xs text-red-600 hover:text-red-800">Hide</button>
+                                        </form>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <div class="px-6 py-3 pl-12 text-sm text-gray-400 italic">
+                                    No operational categories
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Payment Categories -->
+    <div>
+        <h2 class="text-xl font-bold text-red-700 mb-4 flex items-center">
+            <svg class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+            </svg>
+            Payment Categories
+        </h2>
+        
+        {% set payment_categories = reporting_categories|filter(c => c.category_type == 'payment') %}
+        {% if payment_categories is empty %}
+            <div class="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+                No payment categories configured
+            </div>
+        {% else %}
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                {% for rc in payment_categories %}
+                    <div class="border-b border-gray-200 last:border-b-0">
+                        <div class="px-6 py-4 bg-red-50 flex justify-between items-center">
+                            <h3 class="font-medium text-gray-900">{{ rc.name }}</h3>
+                            {% if permissions.categories_manage %}
+                            <div class="flex space-x-2">
+                                <a href="/charity/{{ charity.id }}/categories/reporting/{{ rc.id }}/edit" 
+                                   class="text-sm text-blue-600 hover:text-blue-800">Edit</a>
+                                <form id="hide-payment-rc-{{ rc.id }}" method="post" action="/charity/{{ charity.id }}/categories/reporting/{{ rc.id }}/hide" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="button" onclick="confirmAndSubmit('hide-payment-rc-{{ rc.id }}', 'Hide Category', 'Hide this category and all its operational categories?')" class="text-sm text-red-600 hover:text-red-800">Hide</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            {% for oc in operational_by_reporting[rc.id] %}
+                                <div class="px-6 py-3 pl-12 flex justify-between items-center hover:bg-gray-50">
+                                    <span class="text-sm text-gray-700">{{ oc.name }}</span>
+                                    {% if permissions.categories_manage %}
+                                    <div class="flex space-x-2">
+                                        <a href="/charity/{{ charity.id }}/categories/operational/{{ oc.id }}/edit" 
+                                           class="text-xs text-blue-600 hover:text-blue-800">Edit</a>
+                                        <form id="hide-payment-oc-{{ oc.id }}" method="post" action="/charity/{{ charity.id }}/categories/operational/{{ oc.id }}/hide" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="button" onclick="confirmAndSubmit('hide-payment-oc-{{ oc.id }}', 'Hide Category', 'Hide this operational category?')" class="text-xs text-red-600 hover:text-red-800">Hide</button>
+                                        </form>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <div class="px-6 py-3 pl-12 text-sm text-gray-400 italic">
+                                    No operational categories
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="mt-6 text-sm text-gray-500">
+    <p><strong>Reporting Categories</strong> appear on your published accounts (Receipts & Payments statement).</p>
+    <p><strong>Operational Categories</strong> are used for day-to-day recording and roll up to reporting categories.</p>
+    <p class="mt-2">Hidden categories are not deleted and existing transactions will retain their category. They simply won't appear for new transactions.</p>
+</div>
+
+{% include 'components/confirm_modal.html.twig' %}
+{% endblock %}

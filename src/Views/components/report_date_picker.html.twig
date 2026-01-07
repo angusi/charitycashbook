@@ -1,0 +1,123 @@
+{# 
+  Date range picker with quick select buttons
+  Expects: date_from, date_to, charity (for year end calculation)
+  Optional: show_type (boolean) to show receipt/payment selector, type (current value)
+#}
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="get" class="space-y-4">
+        <div class="flex flex-wrap items-end gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">From Date</label>
+                <input type="date" name="date_from" id="date_from" value="{{ date_from }}" 
+                       class="mt-1 block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">To Date</label>
+                <input type="date" name="date_to" id="date_to" value="{{ date_to }}" 
+                       class="mt-1 block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            {% if show_type|default(false) %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Type</label>
+                <select name="type" id="type"
+                        class="mt-1 block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option value="receipt" {{ type == 'receipt' ? 'selected' : '' }}>Receipts</option>
+                    <option value="payment" {{ type == 'payment' ? 'selected' : '' }}>Payments</option>
+                </select>
+            </div>
+            {% endif %}
+            <div>
+                <button type="submit" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Generate Report
+                </button>
+            </div>
+        </div>
+        
+        {# Quick date range buttons #}
+        <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+            <span class="text-sm text-gray-500 self-center mr-2">Quick select:</span>
+            <button type="button" onclick="setDateRange('ytd')" 
+                    class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
+                YTD
+            </button>
+            <button type="button" onclick="setDateRange('last_year')" 
+                    class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
+                Last Year
+            </button>
+            <button type="button" onclick="setDateRange('two_years_ago')" 
+                    class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
+                2 Years Ago
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    // Charity year end: month {{ charity.year_end_month|default(3) }}, day {{ charity.year_end_day|default(31) }}
+    const yearEndMonth = {{ charity.year_end_month|default(3) }};
+    const yearEndDay = {{ charity.year_end_day|default(31) }};
+    
+    function getFinancialYearDates(yearsAgo) {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1; // JS months are 0-indexed
+        const currentDay = today.getDate();
+        
+        // Determine which financial year we're currently in
+        let fyEndYear = currentYear;
+        if (currentMonth < yearEndMonth || (currentMonth === yearEndMonth && currentDay <= yearEndDay)) {
+            // We're before this year's year-end, so FY ends this year
+        } else {
+            // We're after this year's year-end, so FY ends next year
+            fyEndYear = currentYear + 1;
+        }
+        
+        // Adjust for years ago
+        fyEndYear -= yearsAgo;
+        
+        // Calculate start date (day after previous year end)
+        const startDate = new Date(fyEndYear - 1, yearEndMonth - 1, yearEndDay);
+        startDate.setDate(startDate.getDate() + 1);
+        
+        // Calculate end date
+        const endDate = new Date(fyEndYear, yearEndMonth - 1, yearEndDay);
+        
+        return { start: startDate, end: endDate };
+    }
+    
+    function formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    window.setDateRange = function(range) {
+        const dateFrom = document.getElementById('date_from');
+        const dateTo = document.getElementById('date_to');
+        
+        let dates;
+        const today = new Date();
+        
+        switch(range) {
+            case 'ytd':
+                dates = getFinancialYearDates(0);
+                // For YTD, end date is today (not year end)
+                dates.end = today;
+                break;
+            case 'last_year':
+                dates = getFinancialYearDates(1);
+                break;
+            case 'two_years_ago':
+                dates = getFinancialYearDates(2);
+                break;
+        }
+        
+        if (dates) {
+            dateFrom.value = formatDate(dates.start);
+            dateTo.value = formatDate(dates.end);
+        }
+    };
+})();
+</script>

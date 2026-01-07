@@ -1,0 +1,163 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Dashboard - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ charity.name }}</h1>
+    <p class="text-sm text-gray-500">Dashboard</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <!-- Total Balance -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 bg-blue-100 rounded-md p-3 h-12 w-12 flex items-center justify-center">
+                <span class="text-2xl font-bold text-blue-600">£</span>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-500">Total Balance</p>
+                <p class="text-2xl font-semibold text-gray-900">£{{ total_balance|number_format(2) }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipts YTD -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 bg-green-100 rounded-md p-3">
+                <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                </svg>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-500">Receipts YTD</p>
+                <p class="text-2xl font-semibold text-gray-900">£{{ ytd_receipts|number_format(2) }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payments YTD -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 bg-red-100 rounded-md p-3">
+                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                </svg>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-500">Payments YTD</p>
+                <p class="text-2xl font-semibold text-gray-900">£{{ ytd_payments|number_format(2) }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gift Aid Claimable -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 bg-purple-100 rounded-md p-3">
+                <svg class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div class="ml-4">
+                <p class="text-sm font-medium text-gray-500">Gift Aid Claimable</p>
+                <p class="text-2xl font-semibold text-gray-900">£{{ giftaid_summary.total_giftaid|default(0)|number_format(2) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="mb-8">
+    <h2 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {% if permissions.transactions_create %}
+            <a href="/charity/{{ charity.id }}/transactions/create?type=receipt" 
+               class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
+                <svg class="mx-auto h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <p class="mt-2 text-sm font-medium text-gray-900">New Receipt</p>
+            </a>
+            <a href="/charity/{{ charity.id }}/transactions/create?type=payment" 
+               class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
+                <svg class="mx-auto h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+                </svg>
+                <p class="mt-2 text-sm font-medium text-gray-900">New Payment</p>
+            </a>
+        {% endif %}
+        <a href="/charity/{{ charity.id }}/reports/receipts-payments" 
+           class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
+            <svg class="mx-auto h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p class="mt-2 text-sm font-medium text-gray-900">R&P Report</p>
+        </a>
+        <a href="/charity/{{ charity.id }}/giftaid" 
+           class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
+            <svg class="mx-auto h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <p class="mt-2 text-sm font-medium text-gray-900">Gift Aid</p>
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Recent Transactions -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="text-lg font-medium text-gray-900">Recent Transactions</h2>
+            <a href="/charity/{{ charity.id }}/transactions" class="text-sm text-blue-600 hover:text-blue-800">View all</a>
+        </div>
+        <div class="divide-y divide-gray-200">
+            {% if recent_transactions is empty %}
+                <div class="p-6 text-center text-gray-500">No transactions yet</div>
+            {% else %}
+                {% for t in recent_transactions %}
+                    <div class="px-6 py-4">
+                        <div class="flex justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">{{ t.description }}</p>
+                                <p class="text-xs text-gray-500">{{ t.transaction_date }} · {{ t.fund_name }}</p>
+                            </div>
+                            <p class="text-sm font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
+                                {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
+                            </p>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Fund Balances -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="text-lg font-medium text-gray-900">Fund Balances</h2>
+            <a href="/charity/{{ charity.id }}/funds" class="text-sm text-blue-600 hover:text-blue-800">Manage funds</a>
+        </div>
+        <div class="divide-y divide-gray-200">
+            {% if funds is empty %}
+                <div class="p-6 text-center text-gray-500">No funds set up yet</div>
+            {% else %}
+                {% for f in funds %}
+                    <div class="px-6 py-4">
+                        <div class="flex justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">{{ f.name }}</p>
+                                <p class="text-xs text-gray-500 capitalize">{{ f.fund_type }}</p>
+                            </div>
+                            <p class="text-sm font-semibold text-gray-900">£{{ f.balance|number_format(2) }}</p>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

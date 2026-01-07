@@ -1,0 +1,183 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Edit Donor - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Edit Donor</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <form method="post" action="/charity/{{ charity.id }}/donors/{{ donor.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div class="space-y-6">
+                <h3 class="text-lg font-medium text-gray-900">Personal Details</h3>
+                
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Name *</label>
+                    <input type="text" name="name" id="name" required maxlength="200"
+                           value="{{ donor.name }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                           placeholder="e.g. Mr John Smith">
+                </div>
+
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" name="email" id="email" maxlength="255"
+                           value="{{ donor.email }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <h3 class="text-lg font-medium text-gray-900 pt-4 border-t border-gray-200">Address</h3>
+                <p class="text-sm text-gray-500">Required for Gift Aid claims</p>
+
+                <div>
+                    <label for="address_line1" class="block text-sm font-medium text-gray-700">Address Line 1</label>
+                    <input type="text" name="address_line1" id="address_line1" maxlength="200"
+                           value="{{ donor.address_line1 }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="address_line2" class="block text-sm font-medium text-gray-700">Address Line 2</label>
+                    <input type="text" name="address_line2" id="address_line2" maxlength="200"
+                           value="{{ donor.address_line2 }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="city" class="block text-sm font-medium text-gray-700">City</label>
+                        <input type="text" name="city" id="city" maxlength="100"
+                               value="{{ donor.address_city }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="postcode" class="block text-sm font-medium text-gray-700">Postcode</label>
+                        <input type="text" name="postcode" id="postcode" maxlength="20"
+                               value="{{ donor.address_postcode }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                </div>
+
+                {% if linked_member and enabled_modules.members is defined and enabled_modules.members.is_enabled %}
+                <div class="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="sync_address_to_member" value="1"
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-700">Also update address on linked member record ({{ linked_member.name }})</span>
+                    </label>
+                </div>
+                {% endif %}
+
+                <h3 class="text-lg font-medium text-gray-900 pt-4 border-t border-gray-200">Gift Aid Declarations</h3>
+
+                {% if declarations is not empty %}
+                    <div class="space-y-2">
+                        {% for dec in declarations %}
+                            <div class="p-3 rounded {{ dec.withdrawn_date ? 'bg-gray-100' : 'bg-green-50' }}">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <span class="text-sm font-medium">
+                                            Started: {{ dec.start_date }}
+                                            {% if dec.covers_past_donations %}
+                                                (covers past donations)
+                                            {% endif %}
+                                        </span>
+                                        {% if dec.withdrawn_date %}
+                                            <span class="text-sm text-red-600 ml-2">Withdrawn: {{ dec.withdrawn_date }}</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 ml-2">Active</span>
+                                        {% endif %}
+                                        {% if dec.notes %}
+                                            <p class="text-xs text-gray-500 mt-1">{{ dec.notes }}</p>
+                                        {% endif %}
+                                    </div>
+                                    {% if not dec.withdrawn_date %}
+                                        <button type="button" onclick="withdrawDeclaration({{ dec.id }})" 
+                                                class="text-xs text-red-600 hover:text-red-800">Withdraw</button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-sm text-gray-500">No declarations on file.</p>
+                {% endif %}
+
+                <div class="pt-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="add_declaration" value="1" id="add_declaration"
+                               class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-700">Add new Gift Aid declaration</span>
+                    </label>
+
+                    <div id="new_declaration_fields" class="pl-6 space-y-4 mt-4 hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="new_declaration_date" class="block text-sm font-medium text-gray-700">Declaration Date</label>
+                                <input type="date" name="new_declaration_date" id="new_declaration_date"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="flex items-center mt-6">
+                                    <input type="checkbox" name="covers_past" value="1"
+                                           class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <span class="ml-2 text-sm text-gray-700">Covers past donations</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="new_declaration_notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                            <textarea name="new_declaration_notes" id="new_declaration_notes" rows="2"
+                                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden fields for declaration withdrawal -->
+                <input type="hidden" name="withdraw_declaration_id" id="withdraw_declaration_id" value="">
+                <input type="hidden" name="withdraw_date" id="withdraw_date" value="">
+
+                <div class="pt-4 border-t border-gray-200">
+                    <label for="notes" class="block text-sm font-medium text-gray-700">General Notes</label>
+                    <textarea name="notes" id="notes" rows="3"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ donor.notes }}</textarea>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-3">
+                <a href="/charity/{{ charity.id }}/donors/{{ donor.id }}" 
+                   class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('add_declaration').addEventListener('change', function() {
+    document.getElementById('new_declaration_fields').classList.toggle('hidden', !this.checked);
+});
+
+function withdrawDeclaration(declarationId) {
+    if (confirm('Are you sure you want to withdraw this declaration? This will affect Gift Aid eligibility for future donations.')) {
+        document.getElementById('withdraw_declaration_id').value = declarationId;
+        document.getElementById('withdraw_date').value = new Date().toISOString().split('T')[0];
+        document.querySelector('form').submit();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,276 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Terms of Service - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <div class="bg-white rounded-lg shadow px-6 py-8 sm:px-10">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
+        <p class="text-sm text-gray-500 mb-8">Last updated: {{ last_updated }}</p>
+
+        <div class="prose prose-blue max-w-none">
+            <h2>1. Introduction</h2>
+            <p>
+                These Terms of Service ("Terms") govern your use of {{ app_name }}, a financial management 
+                service for UK charities operated by <strong>Portobello Community Media SCIO</strong> 
+                (Scottish Charity Number SC053184, "we", "us", "our").
+            </p>
+            <p>
+                By using {{ app_name }}, you agree to these Terms. If you are using the service on behalf 
+                of a charity, you represent that you have authority to bind that charity to these Terms.
+            </p>
+
+            <h2>2. Service Description</h2>
+            <p>{{ app_name }} provides:</p>
+            <ul>
+                <li>Financial transaction recording and reporting</li>
+                <li>Fund and category management</li>
+                <li>Donor and Gift Aid management</li>
+                <li>Member and trustee tracking</li>
+                <li>Cash book reconciliation</li>
+                <li>Report generation for charity accounts</li>
+            </ul>
+
+            <h2>3. Eligibility</h2>
+            <p>{{ app_name }} is available to:</p>
+            <ul>
+                <li>UK registered charities (with the Charity Commission, OSCR, or CCNI)</li>
+                <li>Community Interest Companies (CICs)</li>
+                <li>Other not-for-profit organisations based in the UK</li>
+            </ul>
+            <p>
+                Users must be at least 18 years old and authorised by their organisation to access the service.
+            </p>
+
+            <h2>4. User Accounts</h2>
+            <h3>4.1 Registration</h3>
+            <p>
+                Access is by invitation only. A charity administrator must add your email address to the 
+                allowed list before you can create an account.
+            </p>
+            
+            <h3>4.2 Authentication</h3>
+            <p>
+                We use OAuth 2.0 authentication through Google and Microsoft. We do not store passwords. 
+                You are responsible for maintaining the security of your OAuth account.
+            </p>
+            
+            <h3>4.3 Account Security</h3>
+            <p>You agree to:</p>
+            <ul>
+                <li>Keep your login credentials secure</li>
+                <li>Notify your charity administrator immediately if you suspect unauthorised access</li>
+                <li>Not share your account with others</li>
+            </ul>
+
+            <h2>5. Acceptable Use</h2>
+            <p>You agree not to:</p>
+            <ul>
+                <li>Use the service for any unlawful purpose</li>
+                <li>Attempt to gain unauthorised access to other charities' data</li>
+                <li>Upload malicious code or attempt to compromise the service</li>
+                <li>Use the service to store data unrelated to charity financial management</li>
+                <li>Violate any applicable laws or regulations</li>
+            </ul>
+
+            <h2>6. Data and Content</h2>
+            <h3>6.1 Your Data</h3>
+            <p>
+                You retain ownership of all data you enter into {{ app_name }}. We do not claim any 
+                intellectual property rights over your charity's financial data.
+            </p>
+            
+            <h3>6.2 Data Accuracy</h3>
+            <p>
+                You are responsible for the accuracy of data entered. {{ app_name }} is a tool to assist 
+                with record-keeping; it does not validate the correctness of financial information.
+            </p>
+            
+            <h3>6.3 Backups</h3>
+            <p>
+                While we maintain regular backups, we recommend that charities periodically export their 
+                data for their own records.
+            </p>
+
+            <h2>7. Data Processing Agreement</h2>
+            <p>
+                When your charity uses {{ app_name }}, you (the charity) act as the Data Controller for 
+                donor, member, and transaction data, and we act as the Data Processor. The following 
+                terms constitute our Data Processing Agreement under UK GDPR Article 28:
+            </p>
+            
+            <h3>7.1 Processing Instructions</h3>
+            <p>We will only process personal data:</p>
+            <ul>
+                <li>On your documented instructions (using the service constitutes such instructions)</li>
+                <li>As necessary to provide the {{ app_name }} service</li>
+                <li>As required by UK law (in which case we will inform you unless prohibited)</li>
+            </ul>
+            
+            <h3>7.2 Confidentiality</h3>
+            <p>
+                All personnel with access to personal data are bound by confidentiality obligations.
+            </p>
+            
+            <h3>7.3 Security Measures</h3>
+            <p>We implement appropriate technical and organisational measures including:</p>
+            <ul>
+                <li>Encryption of data in transit (TLS)</li>
+                <li>Secure authentication (OAuth 2.0)</li>
+                <li>Role-based access controls</li>
+                <li>Audit logging</li>
+                <li>Regular security assessments</li>
+            </ul>
+            
+            <h3>7.4 Sub-processors</h3>
+            <p>We use the following sub-processors:</p>
+            <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead>
+                    <tr>
+                        <th class="text-left">Sub-processor</th>
+                        <th class="text-left">Purpose</th>
+                        <th class="text-left">Location</th>
+                        <th class="text-left">Safeguards</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Hosting provider</td>
+                        <td>Server infrastructure</td>
+                        <td>United States</td>
+                        <td>Standard Contractual Clauses</td>
+                    </tr>
+                    <tr>
+                        <td>Google (optional)</td>
+                        <td>OAuth authentication</td>
+                        <td>International</td>
+                        <td>Standard Contractual Clauses</td>
+                    </tr>
+                    <tr>
+                        <td>Microsoft (optional)</td>
+                        <td>OAuth authentication</td>
+                        <td>International</td>
+                        <td>Standard Contractual Clauses</td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+            <p>
+                We will notify you before adding new sub-processors. You may object within 14 days if 
+                you have reasonable grounds.
+            </p>
+            
+            <h3>7.5 Data Subject Rights</h3>
+            <p>
+                We provide tools within {{ app_name }} to help you respond to data subject requests 
+                (access, rectification, erasure, portability). We will assist you in fulfilling these 
+                obligations.
+            </p>
+            
+            <h3>7.6 Data Breach Notification</h3>
+            <p>
+                We will notify you without undue delay (and within 48 hours where feasible) upon 
+                becoming aware of a personal data breach affecting your data.
+            </p>
+            
+            <h3>7.7 Audit Rights</h3>
+            <p>
+                Upon reasonable request, we will provide information necessary to demonstrate compliance 
+                with our processor obligations.
+            </p>
+            
+            <h3>7.8 Data Return and Deletion</h3>
+            <p>
+                Upon termination of your use of {{ app_name }}, we will (at your choice):
+            </p>
+            <ul>
+                <li>Provide an export of all your charity's data, and/or</li>
+                <li>Delete your data, except where retention is required by law</li>
+            </ul>
+
+            <h2>8. Service Availability</h2>
+            <p>
+                We aim to provide reliable service but do not guarantee uninterrupted availability. 
+                We may need to suspend access for maintenance, updates, or security reasons.
+            </p>
+            <p>
+                {{ app_name }} is provided on a best-efforts basis by a charitable organisation. 
+                It is not intended for mission-critical applications requiring guaranteed uptime.
+            </p>
+
+            <h2>9. Pricing</h2>
+            <p>
+                {{ app_name }} is currently provided free of charge. We reserve the right to introduce 
+                pricing in the future, with reasonable notice to existing users.
+            </p>
+
+            <h2>10. Limitation of Liability</h2>
+            <p>
+                To the maximum extent permitted by law:
+            </p>
+            <ul>
+                <li>{{ app_name }} is provided "as is" without warranties of any kind</li>
+                <li>We are not liable for any indirect, incidental, or consequential damages</li>
+                <li>Our total liability is limited to the amount you paid for the service (if any)</li>
+                <li>We are not responsible for errors in Gift Aid calculations or claims – you must verify all submissions to HMRC</li>
+            </ul>
+            <p>
+                Nothing in these Terms limits liability for death, personal injury caused by negligence, 
+                fraud, or any liability that cannot be excluded by law.
+            </p>
+
+            <h2>11. Indemnification</h2>
+            <p>
+                You agree to indemnify us against claims arising from:
+            </p>
+            <ul>
+                <li>Your breach of these Terms</li>
+                <li>Your charity's violation of data protection laws</li>
+                <li>Inaccurate data entered by your users</li>
+            </ul>
+
+            <h2>12. Termination</h2>
+            <h3>12.1 By You</h3>
+            <p>
+                You may stop using {{ app_name }} at any time. Contact us to request data export 
+                and account deletion.
+            </p>
+            
+            <h3>12.2 By Us</h3>
+            <p>We may suspend or terminate access if:</p>
+            <ul>
+                <li>You breach these Terms</li>
+                <li>Your charity ceases to operate</li>
+                <li>Required by law</li>
+                <li>We discontinue the service (with reasonable notice)</li>
+            </ul>
+
+            <h2>13. Changes to Terms</h2>
+            <p>
+                We may update these Terms from time to time. We will notify you of material changes 
+                at least 30 days before they take effect. Continued use after changes constitutes 
+                acceptance.
+            </p>
+
+            <h2>14. Governing Law</h2>
+            <p>
+                These Terms are governed by the laws of Scotland. Any disputes will be subject to 
+                the exclusive jurisdiction of the Scottish courts.
+            </p>
+
+            <h2>15. Contact</h2>
+            <p>For questions about these Terms, contact:</p>
+            <address class="not-italic">
+                <strong>Portobello Community Media SCIO</strong><br>
+                Scottish Charity Number: SC053184<br>
+                Email: &#99;&#111;&#110;&#116;&#97;&#99;&#116;&#64;&#112;&#111;&#114;&#116;&#111;&#98;&#101;&#108;&#108;&#111;&#99;&#111;&#109;&#109;&#117;&#110;&#105;&#116;&#121;&#109;&#101;&#100;&#105;&#97;&#46;&#111;&#114;&#103;
+            </address>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <a href="/login" class="text-blue-600 hover:text-blue-800">&larr; Back to login</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

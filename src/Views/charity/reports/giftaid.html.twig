@@ -1,0 +1,74 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Gift Aid Report - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Gift Aid Report</h1>
+    <p class="text-sm text-gray-500">{{ charity.name }}</p>
+</div>
+
+{% include 'components/report_date_picker.html.twig' %}
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm font-medium text-gray-500">Eligible Donations</p>
+        <p class="text-2xl font-semibold text-gray-900">£{{ report.eligible_total|number_format(2) }}</p>
+        <p class="text-xs text-gray-500">{{ report.eligible_count }} transactions</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm font-medium text-gray-500">Gift Aid Claimable</p>
+        <p class="text-2xl font-semibold text-green-600">£{{ (report.eligible_total * 0.25)|number_format(2) }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm font-medium text-gray-500">Already Claimed</p>
+        <p class="text-2xl font-semibold text-gray-900">£{{ report.claimed_total|number_format(2) }}</p>
+        <p class="text-xs text-gray-500">{{ report.claimed_count }} transactions</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm font-medium text-gray-500">GASDS</p>
+        <p class="text-2xl font-semibold text-purple-600">£{{ report.gasds_total|number_format(2) }}</p>
+    </div>
+</div>
+
+<!-- Claims Summary -->
+{% if claims is defined and claims|length > 0 %}
+<div class="bg-white rounded-lg shadow mb-6">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-medium text-gray-900">Claims in Period</h2>
+    </div>
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Donations</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gift Aid</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for claim in claims %}
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {{ claim.claim_period_start }} - {{ claim.claim_period_end }}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                        {{ claim.status == 'submitted' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
+                        {{ claim.status|capitalize }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">£{{ claim.total_donations|number_format(2) }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">£{{ claim.total_giftaid|number_format(2) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="/charity/{{ charity.id }}/reports" class="text-sm text-blue-600 hover:text-blue-800">← Back to Reports</a>
+</div>
+{% endblock %}

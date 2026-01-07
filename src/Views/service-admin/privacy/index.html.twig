@@ -1,0 +1,167 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Privacy & Data Management - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Privacy & Data Management</h1>
+        <p class="text-sm text-gray-500">GDPR compliance tools - search and manage personal data across all charities</p>
+    </div>
+
+    {% include 'components/flash.html.twig' %}
+
+    <!-- Search Form -->
+    <div class="bg-white rounded-lg shadow mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Search Personal Data</h2>
+        </div>
+        <div class="p-6">
+            <form method="get" action="/service-admin/privacy" class="flex gap-4">
+                <div class="flex-1">
+                    <input type="text" name="search" value="{{ search_term }}" 
+                           placeholder="Search by name or email address..."
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <button type="submit" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+                    Search All Charities
+                </button>
+            </form>
+            <p class="mt-2 text-xs text-gray-500">
+                This searches donors, members, and user accounts across all charities in the system.
+            </p>
+        </div>
+    </div>
+
+    {% if search_results %}
+    <!-- Search Results -->
+    <div class="space-y-6">
+        <!-- Users -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">User Accounts ({{ search_results.users|length }})</h2>
+            </div>
+            {% if search_results.users is empty %}
+            <div class="p-6 text-center text-gray-500">No user accounts found</div>
+            {% else %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for u in search_results.users %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {{ u.display_name }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ u.primary_email }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                {% if u.is_active %}
+                                <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Active</span>
+                                {% else %}
+                                <span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ u.created_at|date('Y-m-d') }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                <a href="/service-admin/privacy/users/{{ u.id }}" class="text-blue-600 hover:text-blue-800">View Data</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Donors -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Donors ({{ search_results.donors|length }})</h2>
+            </div>
+            {% if search_results.donors is empty %}
+            <div class="p-6 text-center text-gray-500">No donors found</div>
+            {% else %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Charity</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for d in search_results.donors %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ d.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ d.email ?: '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ d.charity_name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                <span class="text-xs">Charity ID: {{ d.charity_id }}, Donor ID: {{ d.id }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-6 py-3 bg-gray-50 text-xs text-gray-500">
+                Note: Donor data is managed by the charity admin. Contact them or use the charity admin interface.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Members -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Members ({{ search_results.members|length }})</h2>
+            </div>
+            {% if search_results.members is empty %}
+            <div class="p-6 text-center text-gray-500">No members found</div>
+            {% else %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Charity</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for m in search_results.members %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ m.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ m.email ?: '-' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ m.charity_name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                <span class="text-xs">Charity ID: {{ m.charity_id }}, Member ID: {{ m.id }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-6 py-3 bg-gray-50 text-xs text-gray-500">
+                Note: Member data is managed by the charity admin. Contact them or use the charity admin interface.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-6 text-center">
+        <a href="/service-admin" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

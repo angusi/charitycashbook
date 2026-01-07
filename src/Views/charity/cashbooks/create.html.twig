@@ -1,0 +1,95 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Add Cash Book - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Add Cash Book</h1>
+    <p class="text-sm text-gray-500">Create a new bank account, petty cash tin, or other cash book</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="max-w-2xl">
+    <form action="/charity/{{ charity.id }}/cashbooks" method="POST" class="bg-white rounded-lg shadow">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Cash Book Details</h2>
+        </div>
+        
+        <div class="px-6 py-4 space-y-4">
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Name *</label>
+                <input type="text" name="name" id="name" required
+                       placeholder="e.g., Main Bank Account, Petty Cash"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            </div>
+
+            <div>
+                <label for="book_type" class="block text-sm font-medium text-gray-700">Type *</label>
+                <select name="book_type" id="book_type" required
+                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <option value="bank">Bank Account</option>
+                    <option value="cash">Petty Cash / Cash Tin</option>
+                    <option value="online">Online (PayPal, Stripe, etc.)</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                <textarea name="description" id="description" rows="2"
+                          placeholder="Optional notes about this cash book"
+                          class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="sort_code" class="block text-sm font-medium text-gray-700">Sort Code</label>
+                    <input type="text" name="sort_code" id="sort_code"
+                           placeholder="00-00-00"
+                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="account_number" class="block text-sm font-medium text-gray-700">Account Number</label>
+                    <input type="text" name="account_number" id="account_number"
+                           placeholder="00000000"
+                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+            </div>
+
+            <div class="border-t pt-4 mt-4">
+                <h3 class="text-sm font-medium text-gray-900 mb-3">Opening Balance</h3>
+                <p class="text-xs text-gray-500 mb-3">Enter the balance at the start date. All future transactions will be calculated from this point.</p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="opening_balance" class="block text-sm font-medium text-gray-700">Balance (£) *</label>
+                        <input type="number" name="opening_balance" id="opening_balance" step="0.01" required
+                               value="0.00"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="opening_balance_date" class="block text-sm font-medium text-gray-700">As of Date *</label>
+                        <input type="date" name="opening_balance_date" id="opening_balance_date" required
+                               value="{{ "now"|date("Y-m-d") }}"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+            <a href="/charity/{{ charity.id }}/cashbooks" 
+               class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                Create Cash Book
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

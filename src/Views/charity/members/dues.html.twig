@@ -1,0 +1,185 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Membership Dues - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Membership Dues</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    {% if permissions.members_manage_dues %}
+    <a href="/charity/{{ charity.id }}/members/dues/generate" 
+       class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+        Generate Bulk Dues
+    </a>
+    {% endif %}
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<!-- Statistics -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="text-sm text-gray-500">Total Due ({{ filters.period_label }})</div>
+        <div class="text-2xl font-bold text-gray-900">£{{ statistics.amount_due|number_format(2) }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="text-sm text-gray-500">Collected</div>
+        <div class="text-2xl font-bold text-green-600">£{{ statistics.amount_paid|number_format(2) }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="text-sm text-gray-500">Outstanding</div>
+        <div class="text-2xl font-bold text-red-600">£{{ (statistics.amount_due - statistics.amount_paid)|number_format(2) }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="text-sm text-gray-500">Collection Rate</div>
+        <div class="text-2xl font-bold text-gray-900">
+            {{ statistics.dues_total > 0 ? ((statistics.dues_paid / statistics.dues_total) * 100)|round : 0 }}%
+        </div>
+    </div>
+</div>
+
+<!-- Sub-navigation -->
+<div class="border-b border-gray-200 mb-6">
+    <nav class="flex space-x-8">
+        <a href="/charity/{{ charity.id }}/members" 
+           class="border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+            All Members
+        </a>
+        <a href="/charity/{{ charity.id }}/members/trustees" 
+           class="border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+            Trustees
+        </a>
+        <a href="/charity/{{ charity.id }}/members/dues" 
+           class="border-b-2 border-blue-500 py-2 px-1 text-sm font-medium text-blue-600">
+            Membership Dues
+        </a>
+        {% if permissions.members_edit %}
+        <a href="/charity/{{ charity.id }}/members/types" 
+           class="border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+            Membership Types
+        </a>
+        {% endif %}
+    </nav>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="get" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Period</label>
+            <select name="period" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="{{ current_period.period_label }}" {{ filters.period_label == current_period.period_label ? 'selected' : '' }}>{{ current_period.period_label }} (current)</option>
+                {% for period in period_labels %}
+                    {% if period.period_label != current_period.period_label %}
+                        <option value="{{ period.period_label }}" {{ filters.period_label == period.period_label ? 'selected' : '' }}>{{ period.period_label }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Status</label>
+            <select name="status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="">All</option>
+                <option value="pending" {{ filters.status == 'pending' ? 'selected' : '' }}>Pending</option>
+                <option value="partial" {{ filters.status == 'partial' ? 'selected' : '' }}>Partial</option>
+                <option value="paid" {{ filters.status == 'paid' ? 'selected' : '' }}>Paid</option>
+                <option value="waived" {{ filters.status == 'waived' ? 'selected' : '' }}>Waived</option>
+            </select>
+        </div>
+        <div class="flex items-end">
+            <button type="submit" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm">
+                Filter
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Dues Table -->
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for due in dues %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-medium text-gray-900">
+                            <a href="/charity/{{ charity.id }}/members/{{ due.member_id }}" class="hover:text-blue-600">
+                                {{ due.name }}
+                            </a>
+                        </div>
+                        {% if due.member_number %}
+                            <div class="text-sm text-gray-500">#{{ due.member_number }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ due.period_label ?: (due.period_start|date("Y")) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        £{{ due.amount_due|number_format(2) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        £{{ due.amount_paid|number_format(2) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if due.status == 'paid' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Paid</span>
+                        {% elseif due.status == 'partial' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Partial</span>
+                        {% elseif due.status == 'waived' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Waived</span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Pending</span>
+                        {% endif %}
+                        {% if due.is_giftaid_eligible %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 ml-1" title="Gift Aid eligible">GA</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                        {% if permissions.members_manage_dues %}
+                            {% if due.status in ['pending', 'partial'] %}
+                                <form method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/payment" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="amount" value="{{ due.amount_due - due.amount_paid }}">
+                                    <input type="hidden" name="return_to" value="/charity/{{ charity.id }}/members/dues?period={{ filters.period_label }}&status={{ filters.status }}">
+                                    <button type="submit" class="text-green-600 hover:text-green-800 mr-3">Mark Paid</button>
+                                </form>
+                                <form method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/waive" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="return_to" value="/charity/{{ charity.id }}/members/dues?period={{ filters.period_label }}&status={{ filters.status }}">
+                                    <button type="submit" class="text-gray-600 hover:text-gray-800">Waive</button>
+                                </form>
+                            {% elseif due.status in ['paid', 'waived'] %}
+                                <form method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/undo" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="return_to" value="/charity/{{ charity.id }}/members/dues?period={{ filters.period_label }}&status={{ filters.status }}">
+                                    <button type="submit" class="text-orange-600 hover:text-orange-800" onclick="return confirm('Reset this dues record to pending?')">Undo</button>
+                                </form>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                        No dues records found for this period.
+                        {% if permissions.members_manage_dues %}
+                            <a href="/charity/{{ charity.id }}/members/dues/generate" class="text-blue-600 hover:text-blue-800 block mt-2">Generate dues for members</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

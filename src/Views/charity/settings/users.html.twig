@@ -1,0 +1,198 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Users - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Users</h1>
+        <p class="text-sm text-gray-500">{{ charity.name }}</p>
+    </div>
+    <a href="/charity/{{ charity.id }}/settings/users/invite" 
+       class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+        + Invite User
+    </a>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- Settings Navigation -->
+    <div class="lg:col-span-1">
+        <nav class="space-y-1">
+            <a href="/charity/{{ charity.id }}/settings" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                General
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/modules" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Modules
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/users" 
+               class="bg-blue-50 text-blue-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Users
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/roles" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Roles
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/allowed-emails" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Allowed Emails
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/audit" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Audit Log
+            </a>
+        </nav>
+    </div>
+
+    <!-- Users List -->
+    <div class="lg:col-span-3 space-y-6">
+        <!-- Pending Users Awaiting Approval -->
+        {% if pending_users is not empty %}
+            <div class="bg-white rounded-lg shadow overflow-x-auto border-2 border-yellow-300">
+                <div class="px-6 py-4 border-b border-gray-200 bg-yellow-50">
+                    <h2 class="text-lg font-medium text-gray-900 flex items-center">
+                        <svg class="h-5 w-5 text-yellow-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Pending Approval ({{ pending_users|length }})
+                    </h2>
+                    <p class="text-sm text-gray-500">These users have signed up but need approval before they can access the charity.</p>
+                </div>
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Approve As</th>
+                            <th class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for pending_user in pending_users %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ pending_user.display_name }}</div>
+                                    <div class="text-sm text-gray-500">{{ pending_user.user_email }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <form method="post" action="/charity/{{ charity.id }}/settings/users/{{ pending_user.user_id }}/approve" class="flex items-center space-x-2">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <select name="role" class="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            <option value="readonly">Read Only</option>
+                                            <option value="standard" selected>Standard</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-green-600 hover:bg-green-700">
+                                            Approve
+                                        </button>
+                                    </form>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <form method="post" action="/charity/{{ charity.id }}/settings/users/{{ pending_user.user_id }}/reject" class="inline"
+                                          onsubmit="return confirm('Reject this user\\'s access request? They will need to sign up again.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="text-red-600 hover:text-red-900">Reject</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+        <!-- Active Users -->
+        <div class="bg-white rounded-lg shadow overflow-x-auto">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Active Users</h2>
+            </div>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                        <th class="px-6 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for user in users %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ user.display_name }}</div>
+                                <div class="text-sm text-gray-500">{{ user.user_email }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                {% set role_colour = role_colours[user.role]|default('gray') %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-{{ role_colour }}-100 text-{{ role_colour }}-800">
+                                    {{ user.role|capitalize }}
+                                </span>
+                                {% if user.is_super_admin %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 ml-1">
+                                        Super Admin
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                <a href="/charity/{{ charity.id }}/settings/users/{{ user.user_id }}/edit" class="text-blue-600 hover:text-blue-900">Edit</a>
+                                <form method="post" action="/charity/{{ charity.id }}/settings/users/{{ user.user_id }}/force-reauth" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="text-yellow-600 hover:text-yellow-900">Force Re-auth</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                <form method="post" action="/charity/{{ charity.id }}/settings/users/force-reauth-all"
+                      onsubmit="return confirm('This will require ALL users to re-authenticate. Continue?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="text-sm text-red-600 hover:text-red-900">
+                        Force Re-authentication for All Users
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Pending Invitations / Allowed Emails -->
+        {% if pending_emails is not empty %}
+            <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-medium text-gray-900">Authorized Emails</h2>
+                    <p class="text-sm text-gray-500">Users with matching emails can sign up</p>
+                </div>
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pattern</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-6 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for invite in pending_emails %}
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ invite.email_pattern }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+                                    {{ invite.pattern_type == 'domain' ? 'Domain' : 'Email' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <form method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ invite.id }}/delete" class="inline"
+                                          onsubmit="return confirm('Remove this authorization?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

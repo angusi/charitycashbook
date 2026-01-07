@@ -1,0 +1,142 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}Diagnostics - Service Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">System Diagnostics</h1>
+        <p class="text-sm text-gray-500">System health and configuration</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- PHP Info -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">PHP</h2>
+            </div>
+            <div class="p-6 space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Version</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.php.version }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Memory Limit</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.php.memory_limit }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Max Execution Time</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.php.max_execution_time }}s</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Upload Max Filesize</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.php.upload_max_filesize }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Info -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Database</h2>
+            </div>
+            <div class="p-6 space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Status</span>
+                    {% if diagnostics.database.status == 'connected' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Connected</span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Error</span>
+                    {% endif %}
+                </div>
+                {% if diagnostics.database.version is defined %}
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Version</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.database.version }}</span>
+                </div>
+                {% endif %}
+                {% if diagnostics.database.tables is defined %}
+                <div class="pt-2 border-t border-gray-200">
+                    <p class="text-xs font-medium text-gray-500 uppercase mb-2">Table Counts</p>
+                    {% for table, count in diagnostics.database.tables %}
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-500">{{ table }}</span>
+                        <span class="text-sm font-medium text-gray-900">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Disk Space -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Disk Space</h2>
+            </div>
+            <div class="p-6 space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Free</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.disk.free }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Total</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.disk.total }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-500">Used</span>
+                    <span class="text-sm font-medium text-gray-900">{{ diagnostics.disk.used_percent }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Directories -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Directories</h2>
+            </div>
+            <div class="p-6 space-y-3">
+                {% for name, dir in diagnostics.directories %}
+                <div class="flex justify-between items-center">
+                    <div>
+                        <span class="text-sm text-gray-900">{{ name|capitalize }}</span>
+                        <p class="text-xs text-gray-500 font-mono">{{ dir.path }}</p>
+                    </div>
+                    {% if dir.writable %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Writable</span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Not Writable</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- PHP Extensions -->
+    <div class="mt-6 bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">PHP Extensions</h2>
+        </div>
+        <div class="p-6">
+            <div class="flex flex-wrap gap-2">
+                {% for ext, loaded in diagnostics.extensions %}
+                    {% if loaded %}
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                            ✓ {{ ext }}
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                            ✗ {{ ext }}
+                        </span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6 text-center">
+        <a href="/service-admin" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

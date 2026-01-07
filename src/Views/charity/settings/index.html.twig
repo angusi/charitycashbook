@@ -1,0 +1,191 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Settings - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+    <p class="text-sm text-gray-500">{{ charity.name }}</p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- Settings Navigation -->
+    <div class="lg:col-span-1">
+        <nav class="space-y-1">
+            <a href="/charity/{{ charity.id }}/settings" 
+               class="bg-blue-50 text-blue-700 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                General
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/modules" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Modules
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/users" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Users
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/roles" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Roles
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/allowed-emails" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Allowed Emails
+            </a>
+            <a href="/charity/{{ charity.id }}/settings/audit" 
+               class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                Audit Log
+            </a>
+        </nav>
+    </div>
+
+    <!-- Settings Content -->
+    <div class="lg:col-span-3 space-y-6">
+        <!-- General Settings -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">General Settings</h2>
+            </div>
+            <form method="post" action="/charity/{{ charity.id }}/settings/general">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Charity Name *</label>
+                        <input type="text" name="name" id="name" required maxlength="200"
+                               value="{{ charity.name }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="charity_number" class="block text-sm font-medium text-gray-700">Charity Number</label>
+                            <input type="text" name="charity_number" id="charity_number" maxlength="20"
+                                   value="{{ charity.charity_number }}"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="hmrc_reference" class="block text-sm font-medium text-gray-700">HMRC Reference</label>
+                            <input type="text" name="hmrc_reference" id="hmrc_reference" maxlength="20"
+                                   value="{{ charity.hmrc_reference }}"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <p class="mt-1 text-xs text-gray-500">For Gift Aid claims</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="address" class="block text-sm font-medium text-gray-700">Address</label>
+                        <textarea name="address" id="address" rows="3"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ charity.address }}</textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Financial Year End *</label>
+                        <div class="mt-1 flex space-x-2">
+                            <div class="w-24">
+                                <label for="year_end_day" class="sr-only">Day</label>
+                                <select name="year_end_day" id="year_end_day" required
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                </select>
+                            </div>
+                            <div class="flex-1">
+                                <label for="year_end_month" class="sr-only">Month</label>
+                                <select name="year_end_month" id="year_end_month" required
+                                        onchange="updateDays()"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    <option value="1" {{ charity.year_end_month == 1 ? 'selected' : '' }}>January</option>
+                                    <option value="2" {{ charity.year_end_month == 2 ? 'selected' : '' }}>February</option>
+                                    <option value="3" {{ charity.year_end_month == 3 ? 'selected' : '' }}>March</option>
+                                    <option value="4" {{ charity.year_end_month == 4 ? 'selected' : '' }}>April</option>
+                                    <option value="5" {{ charity.year_end_month == 5 ? 'selected' : '' }}>May</option>
+                                    <option value="6" {{ charity.year_end_month == 6 ? 'selected' : '' }}>June</option>
+                                    <option value="7" {{ charity.year_end_month == 7 ? 'selected' : '' }}>July</option>
+                                    <option value="8" {{ charity.year_end_month == 8 ? 'selected' : '' }}>August</option>
+                                    <option value="9" {{ charity.year_end_month == 9 ? 'selected' : '' }}>September</option>
+                                    <option value="10" {{ charity.year_end_month == 10 ? 'selected' : '' }}>October</option>
+                                    <option value="11" {{ charity.year_end_month == 11 ? 'selected' : '' }}>November</option>
+                                    <option value="12" {{ charity.year_end_month == 12 ? 'selected' : '' }}>December</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="membership_year_type" class="block text-sm font-medium text-gray-700">Membership Year Type</label>
+                        <select name="membership_year_type" id="membership_year_type"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="financial" {{ charity.membership_year_type == 'financial' or charity.membership_year_type is not defined ? 'selected' : '' }}>Financial Year (same as above)</option>
+                            <option value="calendar" {{ charity.membership_year_type == 'calendar' ? 'selected' : '' }}>Calendar Year (January - December)</option>
+                            <option value="anniversary" {{ charity.membership_year_type == 'anniversary' ? 'selected' : '' }}>Anniversary (based on member's join date)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Used when generating membership dues</p>
+                    </div>
+                </div>
+                <div class="px-6 py-3 bg-gray-50 text-right">
+                    <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Authentication Settings -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Authentication Settings</h2>
+            </div>
+            <form method="post" action="/charity/{{ charity.id }}/settings/auth">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="session_timeout" class="block text-sm font-medium text-gray-700">Session Timeout (minutes)</label>
+                        <input type="number" name="session_timeout" id="session_timeout" min="15" max="1440"
+                               value="{{ charity.session_timeout_minutes ?: 480 }}"
+                               class="mt-1 block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Time before users must re-authenticate (15 min - 24 hours)</p>
+                    </div>
+                </div>
+                <div class="px-6 py-3 bg-gray-50 text-right">
+                    <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getDaysInMonth(month) {
+    const days = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return days[month - 1];
+}
+
+function updateDays(selectedDay) {
+    const monthSelect = document.getElementById('year_end_month');
+    const daySelect = document.getElementById('year_end_day');
+    const month = parseInt(monthSelect.value);
+    const maxDays = getDaysInMonth(month);
+    const currentDay = selectedDay || parseInt(daySelect.value) || maxDays;
+    
+    daySelect.innerHTML = '';
+    for (let d = 1; d <= maxDays; d++) {
+        const option = document.createElement('option');
+        option.value = d;
+        option.textContent = d;
+        if (d === Math.min(currentDay, maxDays)) {
+            option.selected = true;
+        }
+        daySelect.appendChild(option);
+    }
+}
+
+// Initialize on page load with charity's current day
+document.addEventListener('DOMContentLoaded', function() {
+    updateDays({{ charity.year_end_day ?: 31 }});
+});
+</script>
+{% endblock %}
