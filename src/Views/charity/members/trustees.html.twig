@@ -90,9 +90,9 @@
 
             {% if permissions.members_manage_trustees %}
             <div class="mt-4 pt-4 border-t border-gray-100">
-                <form method="post" action="/charity/{{ charity.id }}/members/{{ trustee.id }}/trustee-role/end" class="inline">
+                <form id="end-trustee-form-{{ trustee.id }}" method="post" action="/charity/{{ charity.id }}/members/{{ trustee.id }}/trustee-role/end" class="inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="text-sm text-red-600 hover:text-red-800" onclick="return confirm('End trustee role for {{ trustee.name }}?')">
+                    <button type="button" class="text-sm text-red-600 hover:text-red-800" onclick="showConfirmModal('End Trustee Role', 'End trustee role for {{ trustee.name|e('js') }}?', function() { document.getElementById('end-trustee-form-{{ trustee.id }}').submit(); })">
                         End Trustee Role
                     </button>
                 </form>
@@ -218,4 +218,5 @@ document.addEventListener('keydown', function(e) {
     }
 });
 </script>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

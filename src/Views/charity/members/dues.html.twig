@@ -160,10 +160,10 @@
                                     <button type="submit" class="text-gray-600 hover:text-gray-800">Waive</button>
                                 </form>
                             {% elseif due.status in ['paid', 'waived'] %}
-                                <form method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/undo" class="inline">
+                                <form id="undo-dues-form-{{ due.id }}" method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/undo" class="inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <input type="hidden" name="return_to" value="/charity/{{ charity.id }}/members/dues?period={{ filters.period_label }}&status={{ filters.status }}">
-                                    <button type="submit" class="text-orange-600 hover:text-orange-800" onclick="return confirm('Reset this dues record to pending?')">Undo</button>
+                                    <button type="button" class="text-orange-600 hover:text-orange-800" onclick="showConfirmModal('Reset Dues', 'Reset this dues record to pending?', function() { document.getElementById('undo-dues-form-{{ due.id }}').submit(); })">Undo</button>
                                 </form>
                             {% endif %}
                         {% endif %}
@@ -182,4 +182,5 @@
         </tbody>
     </table>
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

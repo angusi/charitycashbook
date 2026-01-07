@@ -28,9 +28,9 @@
                         <span class="text-sm font-medium text-gray-900">{{ stats.cache_size }}</span>
                     </div>
                 </div>
-                <form method="post" action="/service-admin/maintenance/clear-cache" onsubmit="return confirm('Clear all cached templates?');">
+                <form id="clear-cache-form" method="post" action="/service-admin/maintenance/clear-cache">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+                    <button type="button" class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium" onclick="showConfirmModal('Clear Template Cache', 'Clear all cached templates?', function() { document.getElementById('clear-cache-form').submit(); })">
                         Clear Template Cache
                     </button>
                 </form>
@@ -145,9 +145,9 @@
                     <strong>Warning:</strong> This will immediately log out all {{ stats.active_sessions }} active users (except yourself). They will need to sign in again.
                 </p>
             </div>
-            <form method="post" action="/service-admin/maintenance/force-global-reauth" onsubmit="return confirm('Are you sure you want to force ALL users to re-authenticate? This will terminate {{ stats.active_sessions }} active sessions.');">
+            <form id="force-global-reauth-form" method="post" action="/service-admin/maintenance/force-global-reauth">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium">
+                <button type="button" class="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium" onclick="showConfirmModal('Force Global Re-authentication', 'Are you sure you want to force ALL users to re-authenticate? This will terminate {{ stats.active_sessions }} active sessions.', function() { document.getElementById('force-global-reauth-form').submit(); })">
                     Force Global Re-authentication
                 </button>
             </form>
@@ -161,4 +161,5 @@
         <a href="/service-admin" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Dashboard</a>
     </div>
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

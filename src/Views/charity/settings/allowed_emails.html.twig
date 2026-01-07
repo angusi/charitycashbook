@@ -114,10 +114,9 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <form method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ item.id }}/delete" class="inline"
-                                          onsubmit="return confirm('Remove this authorization? Users with this email/domain will no longer be able to sign up.');">
+                                    <form id="remove-allowed-email-{{ item.id }}" method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ item.id }}/delete" class="inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                                        <button type="button" class="text-red-600 hover:text-red-900" onclick="showConfirmModal('Remove Authorization', 'Remove this authorization? Users with this email/domain will no longer be able to sign up.', function() { document.getElementById('remove-allowed-email-{{ item.id }}').submit(); })">Remove</button>
                                     </form>
                                 </td>
                             </tr>
@@ -140,4 +139,5 @@
         </div>
     </div>
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

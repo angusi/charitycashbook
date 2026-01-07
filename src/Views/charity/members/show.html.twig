@@ -252,9 +252,9 @@
                                         <button type="button" onclick="openEditTrusteeModal({{ role.id }}, '{{ role.role|e('js') }}', '{{ role.start_date }}', '{{ role.end_date }}', '{{ role.notes|e('js') }}')" 
                                                 class="text-blue-600 hover:text-blue-800">Edit</button>
                                         {% if role.end_date is null %}
-                                        <form method="post" action="/charity/{{ charity.id }}/members/trustee-role/{{ role.id }}/end" class="inline">
+                                        <form id="end-role-form-{{ role.id }}" method="post" action="/charity/{{ charity.id }}/members/trustee-role/{{ role.id }}/end" class="inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="text-red-600 hover:text-red-800" onclick="return confirm('End this trustee role?')">End Role</button>
+                                            <button type="button" class="text-red-600 hover:text-red-800" onclick="showConfirmModal('End Trustee Role', 'End this trustee role?', function() { document.getElementById('end-role-form-{{ role.id }}').submit(); })">End Role</button>
                                         </form>
                                         {% endif %}
                                     {% endif %}
@@ -476,4 +476,5 @@ function openEditTrusteeModal(roleId, role, startDate, endDate, notes) {
 }
 </script>
 {% endif %}
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

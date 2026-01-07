@@ -89,10 +89,9 @@
         </button>
     </form>
     {% else %}
-    <form method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/unsubmit" 
-          onsubmit="return confirm('Are you sure you want to revert this claim to draft status?')">
+    <form id="revert-claim-form" method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/unsubmit">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+        <button type="button" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50" onclick="showConfirmModal('Revert to Draft', 'Are you sure you want to revert this claim to draft status?', function() { document.getElementById('revert-claim-form').submit(); })">
             Revert to Draft
         </button>
     </form>
@@ -200,4 +199,5 @@
         <li>Download the official HMRC schedule spreadsheet from <a href="https://www.gov.uk/government/publications/gift-aid-schedule-spreadsheets-to-claim-back-tax-on-donations" target="_blank" class="underline">GOV.UK</a></li>
     </ul>
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

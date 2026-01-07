@@ -126,19 +126,17 @@
                         <div class="mt-6 pt-4 border-t border-gray-200 space-y-2">
                             <h3 class="text-sm font-medium text-gray-900">Actions</h3>
                             {% if user_sessions|length > 0 %}
-                                <form method="post" action="/service-admin/security/users/{{ target_user.id }}/terminate-sessions" 
-                                      onsubmit="return confirm('Terminate all sessions for this user?');">
+                                <form id="terminate-sessions-form" method="post" action="/service-admin/security/users/{{ target_user.id }}/terminate-sessions">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="w-full px-3 py-2 text-sm bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200">
+                                    <button type="button" class="w-full px-3 py-2 text-sm bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200" onclick="showConfirmModal('Terminate Sessions', 'Terminate all sessions for this user?', function() { document.getElementById('terminate-sessions-form').submit(); })">
                                         Terminate All Sessions ({{ user_sessions|length }})
                                     </button>
                                 </form>
                             {% endif %}
                             {% if target_user.is_active %}
-                                <form method="post" action="/service-admin/security/users/{{ target_user.id }}/disable"
-                                      onsubmit="return confirm('Disable this user account? They will not be able to log in.');">
+                                <form id="disable-account-form" method="post" action="/service-admin/security/users/{{ target_user.id }}/disable">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="w-full px-3 py-2 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200">
+                                    <button type="button" class="w-full px-3 py-2 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200" onclick="showConfirmModal('Disable Account', 'Disable this user account? They will not be able to log in.', function() { document.getElementById('disable-account-form').submit(); })">
                                         Disable Account
                                     </button>
                                 </form>
@@ -288,4 +286,5 @@
         </div>
     {% endif %}
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

@@ -90,10 +90,9 @@
                                     </form>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <form method="post" action="/charity/{{ charity.id }}/settings/users/{{ pending_user.user_id }}/reject" class="inline"
-                                          onsubmit="return confirm('Reject this user\\'s access request? They will need to sign up again.');">
+                                    <form id="reject-user-form-{{ pending_user.user_id }}" method="post" action="/charity/{{ charity.id }}/settings/users/{{ pending_user.user_id }}/reject" class="inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="text-red-600 hover:text-red-900">Reject</button>
+                                        <button type="button" class="text-red-600 hover:text-red-900" onclick="showConfirmModal('Reject Access Request', 'Reject this user\\'s access request? They will need to sign up again.', function() { document.getElementById('reject-user-form-{{ pending_user.user_id }}').submit(); })">Reject</button>
                                     </form>
                                 </td>
                             </tr>
@@ -146,10 +145,9 @@
                 </tbody>
             </table>
             <div class="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                <form method="post" action="/charity/{{ charity.id }}/settings/users/force-reauth-all"
-                      onsubmit="return confirm('This will require ALL users to re-authenticate. Continue?');">
+                <form id="force-reauth-all-form" method="post" action="/charity/{{ charity.id }}/settings/users/force-reauth-all">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="text-sm text-red-600 hover:text-red-900">
+                    <button type="button" class="text-sm text-red-600 hover:text-red-900" onclick="showConfirmModal('Force Re-authentication', 'This will require ALL users to re-authenticate. Continue?', function() { document.getElementById('force-reauth-all-form').submit(); })">
                         Force Re-authentication for All Users
                     </button>
                 </form>
@@ -181,10 +179,9 @@
                                     {{ invite.pattern_type == 'domain' ? 'Domain' : 'Email' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <form method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ invite.id }}/delete" class="inline"
-                                          onsubmit="return confirm('Remove this authorization?');">
+                                    <form id="remove-auth-form-{{ invite.id }}" method="post" action="/charity/{{ charity.id }}/settings/allowed-emails/{{ invite.id }}/delete" class="inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                                        <button type="button" class="text-red-600 hover:text-red-900" onclick="showConfirmModal('Remove Authorization', 'Remove this authorization?', function() { document.getElementById('remove-auth-form-{{ invite.id }}').submit(); })">Remove</button>
                                     </form>
                                 </td>
                             </tr>
@@ -195,4 +192,5 @@
         {% endif %}
     </div>
 </div>
+{% include 'components/confirm_modal.html.twig' %}
 {% endblock %}

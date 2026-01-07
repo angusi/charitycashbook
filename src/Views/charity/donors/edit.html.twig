@@ -167,17 +167,18 @@
 {% endblock %}
 
 {% block scripts %}
+{% include 'components/confirm_modal.html.twig' %}
 <script>
 document.getElementById('add_declaration').addEventListener('change', function() {
     document.getElementById('new_declaration_fields').classList.toggle('hidden', !this.checked);
 });
 
 function withdrawDeclaration(declarationId) {
-    if (confirm('Are you sure you want to withdraw this declaration? This will affect Gift Aid eligibility for future donations.')) {
+    showConfirmModal('Withdraw Declaration', 'Are you sure you want to withdraw this declaration? This will affect Gift Aid eligibility for future donations.', function() {
         document.getElementById('withdraw_declaration_id').value = declarationId;
         document.getElementById('withdraw_date').value = new Date().toISOString().split('T')[0];
         document.querySelector('form').submit();
-    }
+    });
 }
 </script>
 {% endblock %}
