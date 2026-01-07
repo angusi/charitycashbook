@@ -16,7 +16,7 @@
             <p class="text-sm text-yellow-800">
                 You need to create a reporting category first before you can add operational categories.
             </p>
-            <a href="/charity/{{ charity.id }}/categories/reporting/create?type={{ type }}" 
+            <a href="/charity/{{ charity.id }}/categories/reporting/create"
                class="mt-2 inline-block text-sm text-yellow-700 underline">
                 Create a reporting category
             </a>
@@ -39,9 +39,22 @@
                         <select name="reporting_category_id" id="reporting_category_id" required
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                             <option value="">Select a reporting category</option>
-                            {% for rc in reporting_categories %}
-                                <option value="{{ rc.id }}">{{ rc.name }}</option>
-                            {% endfor %}
+                            {% set receipt_categories = reporting_categories|filter(c => c.category_type == 'receipt') %}
+                            {% set payment_categories = reporting_categories|filter(c => c.category_type == 'payment') %}
+                            {% if receipt_categories is not empty %}
+                            <optgroup label="Receipt (Income)">
+                                {% for rc in receipt_categories %}
+                                    <option value="{{ rc.id }}">{{ rc.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                            {% if payment_categories is not empty %}
+                            <optgroup label="Payment (Expenditure)">
+                                {% for rc in payment_categories %}
+                                    <option value="{{ rc.id }}">{{ rc.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
                         </select>
                         <p class="mt-1 text-xs text-gray-500">This operational category will roll up to the selected reporting category</p>
                     </div>

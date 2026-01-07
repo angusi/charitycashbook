@@ -190,6 +190,8 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('donors.create'));
             $donors->post('', \CharityCashbook\Charity\Controllers\DonorController::class . ':store')
                 ->add(new PermissionMiddleware('donors.create'));
+            $donors->post('/quick-create', \CharityCashbook\Charity\Controllers\DonorController::class . ':quickCreate')
+                ->add(new PermissionMiddleware('donors.create'));
             $donors->get('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':show');
             $donors->get('/{id}/edit', \CharityCashbook\Charity\Controllers\DonorController::class . ':edit')
                 ->add(new PermissionMiddleware('donors.edit'));

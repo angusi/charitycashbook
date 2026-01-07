@@ -39,21 +39,39 @@ class TransactionController extends BaseController
             'type' => $params['type'] ?? null,
             'search' => $params['search'] ?? null,
         ];
-        
+
+        // Pagination
+        $perPage = 50;
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $totalItems = $transactionService->countTransactions($charityId, $filters);
+        $totalPages = max(1, (int) ceil($totalItems / $perPage));
+        $page = min($page, $totalPages);
+
+        $filters['limit'] = $perPage;
+        $filters['offset'] = ($page - 1) * $perPage;
+
         $transactions = $transactionService->getTransactions($charityId, $filters);
         $funds = $fundService->getAll($charityId);
-        
-        // Calculate totals
-        $totalReceipts = 0;
-        $totalPayments = 0;
-        foreach ($transactions as $t) {
-            if ($t['transaction_type'] === 'receipt') {
-                $totalReceipts += (float) $t['amount'];
-            } else {
-                $totalPayments += (float) $t['amount'];
-            }
-        }
-        
+
+        // Get totals for current filter (not just current page)
+        $totals = $transactionService->getTotals($charityId, [
+            'date_from' => $filters['date_from'],
+            'date_to' => $filters['date_to'],
+            'fund_id' => $filters['fund_id'],
+            'type' => $filters['type'],
+            'search' => $filters['search'],
+        ]);
+
+        // Build base URL for pagination (preserve filters)
+        $queryParams = array_filter([
+            'date_from' => $filters['date_from'],
+            'date_to' => $filters['date_to'],
+            'fund_id' => $filters['fund_id'],
+            'type' => $filters['type'],
+            'search' => $filters['search'],
+        ]);
+        $baseUrl = "/charity/$charityId/transactions" . ($queryParams ? '?' . http_build_query($queryParams) : '');
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/transactions/index.html.twig', array_merge(
             $this->getCommonTemplateData($request),
@@ -61,8 +79,15 @@ class TransactionController extends BaseController
                 'transactions' => $transactions,
                 'funds' => $funds,
                 'filters' => $filters,
-                'total_receipts' => $totalReceipts,
-                'total_payments' => $totalPayments,
+                'total_receipts' => $totals['receipts'] ?? 0,
+                'total_payments' => $totals['payments'] ?? 0,
+                'pagination' => [
+                    'current_page' => $page,
+                    'total_pages' => $totalPages,
+                    'total_items' => $totalItems,
+                    'per_page' => $perPage,
+                    'base_url' => $baseUrl,
+                ],
             ]
         ));
     }
@@ -158,8 +183,8 @@ class TransactionController extends BaseController
             
         } catch (ValidationException $e) {
             $this->flash('error', 'Please correct the errors below: ' . implode(', ', $e->getErrors()));
-            // In a real app, we'd pass errors back to the form
-            return $this->redirect($response, "/charity/$charityId/transactions/create");
+            $type = $data['type'] ?? 'receipt';
+            return $this->redirect($response, "/charity/$charityId/transactions/create?type=$type");
         }
     }
 

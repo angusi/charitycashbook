@@ -108,15 +108,14 @@ class CategoryController extends BaseController
         $params = $this->getQueryParams($request);
         
         $categoryService = $this->get(CategoryService::class);
-        
-        $type = $params['type'] ?? 'receipt';
-        $reportingCategories = $categoryService->getReportingCategories($charityId, $type);
-        
+
+        // Get all reporting categories (both receipt and payment) so user can choose
+        $reportingCategories = $categoryService->getReportingCategories($charityId, null);
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/categories/create_operational.html.twig', array_merge(
             $this->getCommonTemplateData($request),
             [
-                'type' => $type,
                 'reporting_categories' => $reportingCategories,
             ]
         ));

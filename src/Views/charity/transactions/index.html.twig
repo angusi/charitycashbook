@@ -116,7 +116,7 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {{ t.fund_name }}
                             {% if t.fund_entry_count > 1 %}
-                                <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Split across {{ t.fund_entry_count }} funds">
+                                <span class="ml-1 inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Split across {{ t.fund_entry_count }} funds">
                                     +{{ t.fund_entry_count - 1 }}
                                 </span>
                             {% endif %}
@@ -147,5 +147,6 @@
             {% endif %}
         </tbody>
     </table>
+    {% include 'components/pagination.html.twig' %}
 </div>
 {% endblock %}

@@ -78,7 +78,9 @@
                         <div class="px-6 py-4">
                             <div class="flex justify-between">
                                 <div>
-                                    <p class="text-sm font-medium text-gray-900">{{ donation.description }}</p>
+                                    <p class="text-sm font-medium text-gray-900">
+                                        {{ donation.description }}{% if donation.reference %} <span class="text-gray-500">({{ donation.reference }})</span>{% endif %}
+                                    </p>
                                     <p class="text-xs text-gray-500">{{ donation.transaction_date }} · {{ donation.fund_name }}</p>
                                 </div>
                                 <div class="text-right">

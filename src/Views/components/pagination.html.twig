@@ -1,0 +1,78 @@
+{#
+  Pagination component
+  Required variables:
+  - pagination.current_page: Current page number (1-indexed)
+  - pagination.total_pages: Total number of pages
+  - pagination.total_items: Total number of items
+  - pagination.per_page: Items per page
+  - pagination.base_url: Base URL for pagination links (without page param)
+#}
+{% if pagination.total_pages > 1 %}
+<nav class="flex items-center justify-between border-t border-gray-200 px-4 py-3 sm:px-6" aria-label="Pagination">
+    <div class="hidden sm:block">
+        <p class="text-sm text-gray-700">
+            Showing
+            <span class="font-medium">{{ ((pagination.current_page - 1) * pagination.per_page) + 1 }}</span>
+            to
+            <span class="font-medium">{{ min(pagination.current_page * pagination.per_page, pagination.total_items) }}</span>
+            of
+            <span class="font-medium">{{ pagination.total_items }}</span>
+            results
+        </p>
+    </div>
+    <div class="flex flex-1 justify-between sm:justify-end gap-2">
+        {% if pagination.current_page > 1 %}
+            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.current_page - 1 }}"
+               class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                Previous
+            </a>
+        {% else %}
+            <span class="relative inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 ring-1 ring-inset ring-gray-300 cursor-not-allowed">
+                Previous
+            </span>
+        {% endif %}
+
+        {# Page numbers - show limited range around current page #}
+        <div class="hidden md:flex gap-1">
+            {% set start_page = max(1, pagination.current_page - 2) %}
+            {% set end_page = min(pagination.total_pages, pagination.current_page + 2) %}
+
+            {% if start_page > 1 %}
+                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page=1"
+                   class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">1</a>
+                {% if start_page > 2 %}
+                    <span class="relative inline-flex items-center px-3 py-2 text-sm text-gray-500">...</span>
+                {% endif %}
+            {% endif %}
+
+            {% for page in start_page..end_page %}
+                {% if page == pagination.current_page %}
+                    <span class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md">{{ page }}</span>
+                {% else %}
+                    <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ page }}"
+                       class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">{{ page }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if end_page < pagination.total_pages %}
+                {% if end_page < pagination.total_pages - 1 %}
+                    <span class="relative inline-flex items-center px-3 py-2 text-sm text-gray-500">...</span>
+                {% endif %}
+                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.total_pages }}"
+                   class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">{{ pagination.total_pages }}</a>
+            {% endif %}
+        </div>
+
+        {% if pagination.current_page < pagination.total_pages %}
+            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.current_page + 1 }}"
+               class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                Next
+            </a>
+        {% else %}
+            <span class="relative inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 ring-1 ring-inset ring-gray-300 cursor-not-allowed">
+                Next
+            </span>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}

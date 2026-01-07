@@ -123,7 +123,14 @@
                         <div class="flex justify-between">
                             <div>
                                 <p class="text-sm font-medium text-gray-900">{{ t.description }}</p>
-                                <p class="text-xs text-gray-500">{{ t.transaction_date }} · {{ t.fund_name }}</p>
+                                <p class="text-xs text-gray-500">
+                                    {{ t.transaction_date }} ·
+                                    {% if t.fund_entry_count > 1 %}
+                                        <span class="text-blue-600">{{ t.fund_entry_count }} funds</span>
+                                    {% else %}
+                                        {{ t.fund_name }}
+                                    {% endif %}
+                                </p>
                             </div>
                             <p class="text-sm font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
                                 {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}

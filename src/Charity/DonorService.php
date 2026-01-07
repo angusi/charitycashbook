@@ -48,27 +48,52 @@ class DonorService
     /**
      * Search donors by name with optional filters
      */
-    public function search(int $charityId, string $query, int $limit = 50, int $offset = 0): array
+    public function search(int $charityId, string $query, int $limit = 50, int $offset = 0, bool $giftaidOnly = false): array
     {
-        $sql = "SELECT d.*, 
+        $sql = "SELECT d.*,
                        (SELECT COUNT(*) FROM transactions t WHERE t.donor_id = d.id AND t.is_deleted = FALSE) as donation_count,
                        (SELECT COALESCE(SUM(amount), 0) FROM transactions t WHERE t.donor_id = d.id AND t.is_deleted = FALSE) as total_donated,
                        (SELECT COUNT(*) FROM declarations decl WHERE decl.donor_id = d.id AND decl.withdrawn_date IS NULL) > 0 as has_active_declaration
                 FROM donors d
                 WHERE d.charity_id = ? AND d.is_active = TRUE";
-        
+
         $params = [$charityId];
-        
+
         if (!empty($query)) {
             $sql .= " AND d.name LIKE ?";
             $params[] = '%' . $query . '%';
         }
-        
+
+        if ($giftaidOnly) {
+            $sql .= " AND (SELECT COUNT(*) FROM declarations decl WHERE decl.donor_id = d.id AND decl.withdrawn_date IS NULL) > 0";
+        }
+
         $sql .= " ORDER BY d.name LIMIT ? OFFSET ?";
         $params[] = $limit;
         $params[] = $offset;
 
         return $this->db->query($sql, $params);
+    }
+
+    /**
+     * Count donors matching search criteria
+     */
+    public function countDonors(int $charityId, string $query = '', bool $giftaidOnly = false): int
+    {
+        $sql = "SELECT COUNT(*) as count FROM donors d WHERE d.charity_id = ? AND d.is_active = TRUE";
+        $params = [$charityId];
+
+        if (!empty($query)) {
+            $sql .= " AND d.name LIKE ?";
+            $params[] = '%' . $query . '%';
+        }
+
+        if ($giftaidOnly) {
+            $sql .= " AND (SELECT COUNT(*) FROM declarations decl WHERE decl.donor_id = d.id AND decl.withdrawn_date IS NULL) > 0";
+        }
+
+        $result = $this->db->queryOne($sql, $params);
+        return (int) ($result['count'] ?? 0);
     }
 
     /**

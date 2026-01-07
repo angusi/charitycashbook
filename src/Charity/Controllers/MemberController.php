@@ -26,20 +26,38 @@ class MemberController extends BaseController
         $charityId = (int) $request->getAttribute('charity_id');
         $charity = $request->getAttribute('charity');
         $params = $this->getQueryParams($request);
-        
+
         $memberService = $this->get(MemberService::class);
-        
+
         $filters = [
             'active_only' => !isset($params['show_inactive']),
             'trustees_only' => isset($params['trustees_only']),
             'membership_type' => $params['membership_type'] ?? null,
             'search' => $params['search'] ?? null,
         ];
-        
+
+        // Pagination
+        $perPage = 50;
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $totalItems = $memberService->countMembers($charityId, $filters);
+        $totalPages = max(1, (int) ceil($totalItems / $perPage));
+        $page = min($page, $totalPages);
+
+        $filters['limit'] = $perPage;
+        $filters['offset'] = ($page - 1) * $perPage;
+
         $members = $memberService->getAll($charityId, $filters);
         $membershipTypes = $memberService->getMembershipTypes($charityId);
         $statistics = $memberService->getStatistics($charityId, $charity);
-        
+
+        // Build base URL for pagination (preserve filters)
+        $queryParams = array_filter([
+            'search' => $filters['search'],
+            'membership_type' => $filters['membership_type'],
+            'show_inactive' => !$filters['active_only'] ? '1' : null,
+        ]);
+        $baseUrl = "/charity/$charityId/members" . ($queryParams ? '?' . http_build_query($queryParams) : '');
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/members/index.html.twig', array_merge(
             $this->getCommonTemplateData($request),
@@ -49,6 +67,13 @@ class MemberController extends BaseController
                 'statistics' => $statistics,
                 'filters' => $filters,
                 'active_nav' => 'members',
+                'pagination' => [
+                    'current_page' => $page,
+                    'total_pages' => $totalPages,
+                    'total_items' => $totalItems,
+                    'per_page' => $perPage,
+                    'base_url' => $baseUrl,
+                ],
             ]
         ));
     }

@@ -25,22 +25,33 @@ class DonorController extends BaseController
         $userRole = $request->getAttribute('user_role');
         $userId = $request->getAttribute('user_id');
         $params = $this->getQueryParams($request);
-        
+
         $donorService = $this->get(DonorService::class);
         $auditService = $this->get(AuditService::class);
-        
+
         $search = $params['search'] ?? '';
         $giftaidOnly = !empty($params['giftaid_only']);
-        
-        $donors = $donorService->search($charityId, $search, $giftaidOnly ? 100 : 50, 0);
-        
-        if ($giftaidOnly) {
-            $donors = array_filter($donors, fn($d) => $d['has_active_declaration']);
-        }
-        
+
+        // Pagination
+        $perPage = 50;
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $totalItems = $donorService->countDonors($charityId, $search, $giftaidOnly);
+        $totalPages = max(1, (int) ceil($totalItems / $perPage));
+        $page = min($page, $totalPages);
+        $offset = ($page - 1) * $perPage;
+
+        $donors = $donorService->search($charityId, $search, $perPage, $offset, $giftaidOnly);
+
         // Log donor list access
         $auditService->logDonorAccess($charityId, $userId, null, 'list_view');
-        
+
+        // Build base URL for pagination (preserve filters)
+        $queryParams = array_filter([
+            'search' => $search ?: null,
+            'giftaid_only' => $giftaidOnly ? '1' : null,
+        ]);
+        $baseUrl = "/charity/$charityId/donors" . ($queryParams ? '?' . http_build_query($queryParams) : '');
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/donors/index.html.twig', array_merge(
             $this->getCommonTemplateData($request),
@@ -48,6 +59,13 @@ class DonorController extends BaseController
                 'donors' => $donors,
                 'search' => $search,
                 'giftaid_only' => $giftaidOnly,
+                'pagination' => [
+                    'current_page' => $page,
+                    'total_pages' => $totalPages,
+                    'total_items' => $totalItems,
+                    'per_page' => $perPage,
+                    'base_url' => $baseUrl,
+                ],
             ]
         ));
     }
@@ -304,6 +322,64 @@ class DonorController extends BaseController
         }
         
         return $this->redirect($response, "/charity/$charityId/donors/$donorId");
+    }
+
+    /**
+     * Quick create donor via AJAX (for transaction form modal)
+     */
+    public function quickCreate(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = (int) $request->getAttribute('user_id');
+
+        $body = $request->getBody()->getContents();
+        $data = json_decode($body, true) ?? [];
+
+        try {
+            if (empty($data['name'])) {
+                throw new ValidationException(['Name is required']);
+            }
+
+            $donorService = $this->get(DonorService::class);
+
+            $id = $donorService->create($charityId, $userId, [
+                'name' => trim($data['name']),
+                'email' => $data['email'] ?? null,
+                'address_line1' => $data['address_line1'] ?? null,
+                'address_city' => $data['city'] ?? null,
+                'address_postcode' => $data['postcode'] ?? null,
+            ]);
+
+            $hasDeclaration = false;
+
+            // Add Gift Aid declaration if requested
+            if (!empty($data['add_declaration'])) {
+                $donorService->addDeclaration($id, $charityId, $userId, [
+                    'start_date' => date('Y-m-d'),
+                    'covers_past_donations' => !empty($data['covers_past']),
+                ]);
+                $hasDeclaration = true;
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'donor' => [
+                    'id' => $id,
+                    'name' => trim($data['name']),
+                    'has_declaration' => $hasDeclaration,
+                ],
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (ValidationException $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => implode(', ', $e->getErrors()),
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
     }
 
     /**

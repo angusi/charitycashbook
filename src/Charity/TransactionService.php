@@ -116,6 +116,11 @@ class TransactionService
         if (!empty($filters['limit'])) {
             $sql .= " LIMIT ?";
             $params[] = (int) $filters['limit'];
+
+            if (!empty($filters['offset'])) {
+                $sql .= " OFFSET ?";
+                $params[] = (int) $filters['offset'];
+            }
         }
 
         return $this->db->query($sql, $params);
@@ -126,21 +131,91 @@ class TransactionService
      */
     public function countTransactions(int $charityId, array $filters = []): int
     {
-        $sql = "SELECT COUNT(*) as cnt FROM transactions WHERE charity_id = ? AND is_deleted = FALSE";
+        $sql = "SELECT COUNT(*) as cnt
+                FROM transactions t
+                JOIN operational_categories oc ON oc.id = t.operational_category_id
+                WHERE t.charity_id = ? AND t.is_deleted = FALSE";
         $params = [$charityId];
 
         if (!empty($filters['date_from'])) {
-            $sql .= " AND transaction_date >= ?";
+            $sql .= " AND t.transaction_date >= ?";
             $params[] = $filters['date_from'];
         }
 
         if (!empty($filters['date_to'])) {
-            $sql .= " AND transaction_date <= ?";
+            $sql .= " AND t.transaction_date <= ?";
             $params[] = $filters['date_to'];
+        }
+
+        if (!empty($filters['fund_id'])) {
+            $sql .= " AND EXISTS (SELECT 1 FROM transaction_fund_entries tfe WHERE tfe.transaction_id = t.id AND tfe.fund_id = ?)";
+            $params[] = $filters['fund_id'];
+        }
+
+        if (!empty($filters['type'])) {
+            $sql .= " AND t.transaction_type = ?";
+            $params[] = $filters['type'];
+        }
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND t.description LIKE ?";
+            $params[] = '%' . $filters['search'] . '%';
         }
 
         $result = $this->db->queryOne($sql, $params);
         return (int) ($result['cnt'] ?? 0);
+    }
+
+    /**
+     * Get receipt and payment totals for filters
+     */
+    public function getTotals(int $charityId, array $filters = []): array
+    {
+        $sql = "SELECT t.transaction_type, SUM(t.amount) as total
+                FROM transactions t
+                JOIN operational_categories oc ON oc.id = t.operational_category_id
+                WHERE t.charity_id = ? AND t.is_deleted = FALSE";
+        $params = [$charityId];
+
+        if (!empty($filters['date_from'])) {
+            $sql .= " AND t.transaction_date >= ?";
+            $params[] = $filters['date_from'];
+        }
+
+        if (!empty($filters['date_to'])) {
+            $sql .= " AND t.transaction_date <= ?";
+            $params[] = $filters['date_to'];
+        }
+
+        if (!empty($filters['fund_id'])) {
+            $sql .= " AND EXISTS (SELECT 1 FROM transaction_fund_entries tfe WHERE tfe.transaction_id = t.id AND tfe.fund_id = ?)";
+            $params[] = $filters['fund_id'];
+        }
+
+        if (!empty($filters['type'])) {
+            $sql .= " AND t.transaction_type = ?";
+            $params[] = $filters['type'];
+        }
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND t.description LIKE ?";
+            $params[] = '%' . $filters['search'] . '%';
+        }
+
+        $sql .= " GROUP BY t.transaction_type";
+
+        $results = $this->db->query($sql, $params);
+
+        $totals = ['receipts' => 0, 'payments' => 0];
+        foreach ($results as $row) {
+            if ($row['transaction_type'] === 'receipt') {
+                $totals['receipts'] = (float) $row['total'];
+            } else {
+                $totals['payments'] = (float) $row['total'];
+            }
+        }
+
+        return $totals;
     }
 
     /**
@@ -425,9 +500,12 @@ class TransactionService
             $entries = [];
             foreach ($data['fund_entries'] as $entry) {
                 if (!empty($entry['fund_id']) && isset($entry['amount'])) {
+                    $amount = (float) $entry['amount'];
+                    // Convert to signed amount based on transaction type
+                    $signedAmount = $transactionType === 'receipt' ? $amount : -$amount;
                     $entries[] = [
                         'fund_id' => (int) $entry['fund_id'],
-                        'amount' => (float) $entry['amount'],
+                        'amount' => $signedAmount,
                     ];
                 }
             }
@@ -463,9 +541,12 @@ class TransactionService
             $entries = [];
             foreach ($data['cashbook_entries'] as $entry) {
                 if (!empty($entry['cash_book_id']) && isset($entry['amount'])) {
+                    $amount = (float) $entry['amount'];
+                    // Convert to signed amount based on transaction type
+                    $signedAmount = $transactionType === 'receipt' ? $amount : -$amount;
                     $entries[] = [
                         'cash_book_id' => (int) $entry['cash_book_id'],
-                        'amount' => (float) $entry['amount'],
+                        'amount' => $signedAmount,
                     ];
                 }
             }

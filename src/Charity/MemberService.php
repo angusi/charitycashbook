@@ -65,7 +65,46 @@ class MemberService
 
         $sql .= " ORDER BY m.name";
 
+        // Pagination
+        if (isset($filters['limit'])) {
+            $sql .= " LIMIT " . (int) $filters['limit'];
+            if (isset($filters['offset'])) {
+                $sql .= " OFFSET " . (int) $filters['offset'];
+            }
+        }
+
         return $this->db->query($sql, $params);
+    }
+
+    /**
+     * Count members for pagination
+     */
+    public function countMembers(int $charityId, array $filters = []): int
+    {
+        $sql = "SELECT COUNT(*) as count FROM members m WHERE m.charity_id = ?";
+        $params = [$charityId];
+
+        if (isset($filters['active_only']) && $filters['active_only']) {
+            $sql .= " AND m.is_active = TRUE";
+        }
+
+        if (isset($filters['trustees_only']) && $filters['trustees_only']) {
+            $sql .= " AND m.is_trustee = TRUE AND (m.trustee_end_date IS NULL OR m.trustee_end_date >= CURDATE())";
+        }
+
+        if (!empty($filters['membership_type'])) {
+            $sql .= " AND m.membership_type = ?";
+            $params[] = $filters['membership_type'];
+        }
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (m.name LIKE ? OR m.email LIKE ? OR m.member_number LIKE ?)";
+            $search = '%' . $filters['search'] . '%';
+            $params = array_merge($params, [$search, $search, $search]);
+        }
+
+        $result = $this->db->queryOne($sql, $params);
+        return (int) ($result['count'] ?? 0);
     }
 
     /**

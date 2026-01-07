@@ -159,15 +159,20 @@
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Gift Aid</h3>
                         
                         <div class="mb-4">
-                            <label for="donor_id" class="block text-sm font-medium text-gray-700">Donor</label>
-                            <select name="donor_id" id="donor_id"
-                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                                <option value="">No donor / Anonymous</option>
-                                {% for donor in donors %}
-                                    <option value="{{ donor.id }}" {{ transaction.donor_id == donor.id ? 'selected' : '' }}>{{ donor.name }}{% if donor.has_active_declaration %} ✓{% endif %}</option>
-                                {% endfor %}
-                            </select>
-                            <p class="mt-1 text-xs text-gray-500">✓ = has active Gift Aid declaration</p>
+                            <div class="flex justify-between items-center">
+                                <label for="donor_search" class="block text-sm font-medium text-gray-700">Donor</label>
+                                <button type="button" onclick="openNewDonorModal()" class="text-xs text-blue-600 hover:text-blue-800">
+                                    + New Donor
+                                </button>
+                            </div>
+                            <div class="relative mt-1">
+                                <input type="hidden" name="donor_id" id="donor_id" value="{{ transaction.donor_id }}">
+                                <input type="text" id="donor_search" autocomplete="off"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                       placeholder="Search donors..."
+                                       value="{{ transaction.donor_name }}">
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">Type to search · ✓ = has active Gift Aid declaration</p>
                         </div>
 
                         <div class="space-y-3">
@@ -183,11 +188,11 @@
             </div>
 
             <div class="mt-6 flex justify-end space-x-3">
-                <a href="/charity/{{ charity.id }}/transactions/{{ transaction.id }}" 
+                <a href="/charity/{{ charity.id }}/transactions/{{ transaction.id }}"
                    class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                     Cancel
                 </a>
-                <button type="submit" 
+                <button type="submit"
                         class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                     Save Changes
                 </button>
@@ -195,6 +200,89 @@
         </form>
     </div>
 </div>
+
+{% if transaction.transaction_type == 'receipt' %}
+<!-- Fixed position dropdown for donor search -->
+<div id="donor-dropdown" class="hidden fixed z-50 bg-white shadow-lg rounded-md border border-gray-200 max-h-48 overflow-auto">
+    <!-- Results populated by JS -->
+</div>
+
+<!-- New Donor Modal -->
+<div id="new-donor-modal" class="hidden fixed inset-0 z-50">
+    <div class="fixed inset-0 bg-gray-500 opacity-50"></div>
+    <div class="fixed inset-0 flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <form id="new-donor-form" onsubmit="submitNewDonor(event)">
+            <div class="px-6 py-4">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Add Donor</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Name *</label>
+                        <input type="text" id="new-donor-name" required
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                               placeholder="Donor name">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="new-donor-email"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                               placeholder="email@example.com">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Address Line 1</label>
+                            <input type="text" id="new-donor-address1"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">City</label>
+                            <input type="text" id="new-donor-city"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Postcode</label>
+                        <input type="text" id="new-donor-postcode"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm w-32"
+                               placeholder="AB1 2CD">
+                    </div>
+                    <div class="border-t pt-4">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="new-donor-declaration" onchange="toggleDeclarationOptions()"
+                                   class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <span class="ml-2 text-sm text-gray-700">Add Gift Aid declaration</span>
+                        </label>
+                        <div id="declaration-options" class="hidden ml-6 mt-2 space-y-1">
+                            <label class="flex items-center">
+                                <input type="radio" name="declaration_scope" value="today" checked
+                                       class="border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-600">From today only</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="declaration_scope" value="past"
+                                       class="border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-600">Including past 4 years</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div id="new-donor-error" class="hidden mt-4 p-3 bg-red-50 text-red-700 text-sm rounded-md"></div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 flex justify-end space-x-3 rounded-b-lg">
+                <button type="button" onclick="closeNewDonorModal()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="submit" id="new-donor-submit"
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Create & Select
+                </button>
+            </div>
+        </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <script>
 const funds = {{ funds|json_encode|raw }};
@@ -212,7 +300,7 @@ function toggleSplitMode(type) {
         fundSplitMode = !fundSplitMode;
         document.getElementById('simple-fund-section').classList.toggle('hidden', fundSplitMode);
         document.getElementById('split-fund-section').classList.toggle('hidden', !fundSplitMode);
-        
+
         if (fundSplitMode) {
             document.getElementById('fund_id').value = '';
             document.getElementById('fund_id').removeAttribute('required');
@@ -220,20 +308,31 @@ function toggleSplitMode(type) {
                 addFundEntry();
                 addFundEntry();
             }
+            updateFundTotals();
         } else {
+            // Restore single fund mode - clear split entries completely
             document.getElementById('fund_id').setAttribute('required', 'required');
+            document.getElementById('fund-entries').innerHTML = '';
+            fundEntryCount = 0;
         }
     } else if (type === 'cashbook') {
         cashbookSplitMode = !cashbookSplitMode;
         document.getElementById('simple-cashbook-section').classList.toggle('hidden', cashbookSplitMode);
         document.getElementById('split-cashbook-section').classList.toggle('hidden', !cashbookSplitMode);
-        
+
+        const cashBookSelect = document.getElementById('cash_book_id');
         if (cashbookSplitMode) {
-            document.getElementById('cash_book_id').value = '';
+            cashBookSelect.value = '';
+            cashBookSelect.removeAttribute('required');
             if (cashbookEntryCount === 0) {
                 addCashbookEntry();
                 addCashbookEntry();
             }
+            updateCashbookTotals();
+        } else {
+            // Restore single cashbook mode - clear split entries completely
+            document.getElementById('cashbook-entries').innerHTML = '';
+            cashbookEntryCount = 0;
         }
     }
     updateSplitMode();
@@ -384,5 +483,210 @@ document.getElementById('amount').addEventListener('input', function() {
     if (fundSplitMode) updateFundTotals();
     if (cashbookSplitMode) updateCashbookTotals();
 });
+
+{% if transaction.transaction_type == 'receipt' %}
+// Donor search functionality
+const donors = {{ donors|json_encode|raw }};
+const donorSearch = document.getElementById('donor_search');
+const donorDropdown = document.getElementById('donor-dropdown');
+const donorIdInput = document.getElementById('donor_id');
+
+function truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+}
+
+function positionDropdown() {
+    const rect = donorSearch.getBoundingClientRect();
+    donorDropdown.style.left = rect.left + 'px';
+    donorDropdown.style.top = (rect.bottom + 4) + 'px';
+    donorDropdown.style.width = rect.width + 'px';
+}
+
+function showDropdown() {
+    positionDropdown();
+    donorDropdown.classList.remove('hidden');
+}
+
+function hideDropdown() {
+    donorDropdown.classList.add('hidden');
+}
+
+function renderDonorResults(results) {
+    if (results.length === 0) {
+        donorDropdown.innerHTML = '<div class="px-3 py-2 text-sm text-gray-500">No donors found</div>';
+    } else {
+        donorDropdown.innerHTML = results.map(d => `
+            <div class="donor-option px-3 py-2 hover:bg-gray-100 cursor-pointer" data-id="${d.id}" data-name="${d.name.replace(/"/g, '&quot;')}">
+                <div class="text-sm font-medium text-gray-900">
+                    ${d.name}
+                    ${d.has_active_declaration ? '<span class="text-green-600 ml-1">✓</span>' : ''}
+                </div>
+                ${d.notes ? `<div class="text-xs text-gray-500">${truncate(d.notes, 60)}</div>` : ''}
+            </div>
+        `).join('');
+    }
+    showDropdown();
+}
+
+function filterDonors(query) {
+    const q = query.toLowerCase().trim();
+    if (q === '') {
+        return donors.slice(0, 10);
+    }
+    return donors.filter(d =>
+        d.name.toLowerCase().includes(q) ||
+        (d.notes && d.notes.toLowerCase().includes(q))
+    ).slice(0, 20);
+}
+
+function selectDonor(id, name) {
+    donorIdInput.value = id;
+    donorSearch.value = name;
+    hideDropdown();
+}
+
+function clearDonor() {
+    donorIdInput.value = '';
+    donorSearch.value = '';
+}
+
+donorSearch.addEventListener('input', function() {
+    const results = filterDonors(this.value);
+    renderDonorResults(results);
+});
+
+donorSearch.addEventListener('focus', function() {
+    const results = filterDonors(this.value);
+    renderDonorResults(results);
+});
+
+donorSearch.addEventListener('blur', function() {
+    // Delay hiding to allow click on option
+    setTimeout(hideDropdown, 200);
+});
+
+donorSearch.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        hideDropdown();
+    }
+});
+
+donorDropdown.addEventListener('click', function(e) {
+    const option = e.target.closest('.donor-option');
+    if (option) {
+        selectDonor(option.dataset.id, option.dataset.name);
+    }
+});
+
+// Clear if user empties the field
+donorSearch.addEventListener('change', function() {
+    if (this.value === '') {
+        clearDonor();
+    }
+});
+
+// Reposition on scroll/resize
+window.addEventListener('scroll', function() {
+    if (!donorDropdown.classList.contains('hidden')) {
+        positionDropdown();
+    }
+}, true);
+window.addEventListener('resize', function() {
+    if (!donorDropdown.classList.contains('hidden')) {
+        positionDropdown();
+    }
+});
+
+// New Donor Modal
+const newDonorModal = document.getElementById('new-donor-modal');
+
+function toggleDeclarationOptions() {
+    const checkbox = document.getElementById('new-donor-declaration');
+    const options = document.getElementById('declaration-options');
+    options.classList.toggle('hidden', !checkbox.checked);
+}
+
+function openNewDonorModal() {
+    hideDropdown();
+    newDonorModal.classList.remove('hidden');
+    document.getElementById('new-donor-name').focus();
+}
+
+function closeNewDonorModal() {
+    newDonorModal.classList.add('hidden');
+    document.getElementById('new-donor-form').reset();
+    document.getElementById('new-donor-error').classList.add('hidden');
+    document.getElementById('declaration-options').classList.add('hidden');
+}
+
+async function submitNewDonor(event) {
+    event.preventDefault();
+
+    const submitBtn = document.getElementById('new-donor-submit');
+    const errorDiv = document.getElementById('new-donor-error');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+    errorDiv.classList.add('hidden');
+
+    const addDeclaration = document.getElementById('new-donor-declaration').checked;
+    const declarationScope = document.querySelector('input[name="declaration_scope"]:checked');
+
+    const data = {
+        name: document.getElementById('new-donor-name').value,
+        email: document.getElementById('new-donor-email').value,
+        address_line1: document.getElementById('new-donor-address1').value,
+        city: document.getElementById('new-donor-city').value,
+        postcode: document.getElementById('new-donor-postcode').value,
+        add_declaration: addDeclaration,
+        covers_past: addDeclaration && declarationScope && declarationScope.value === 'past',
+        csrf_token: '{{ csrf_token }}'
+    };
+
+    try {
+        const response = await fetch('/charity/{{ charity.id }}/donors/quick-create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Add new donor to local array
+            donors.push({
+                id: result.donor.id,
+                name: result.donor.name,
+                notes: null,
+                has_active_declaration: result.donor.has_declaration
+            });
+
+            // Select the new donor
+            selectDonor(result.donor.id, result.donor.name);
+            closeNewDonorModal();
+        } else {
+            errorDiv.textContent = result.error || 'Failed to create donor';
+            errorDiv.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorDiv.textContent = 'An error occurred. Please try again.';
+        errorDiv.classList.remove('hidden');
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Create & Select';
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && !newDonorModal.classList.contains('hidden')) {
+        closeNewDonorModal();
+    }
+});
+{% endif %}
 </script>
 {% endblock %}
