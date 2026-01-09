@@ -128,6 +128,31 @@ class CsrfMiddlewareTest extends TestCase
         $this->assertSame($expectedResponse, $response);
     }
 
+    public function testProcessAllowsPostWithValidTokenInHeader(): void
+    {
+        session_start();
+        $_SESSION['csrf_token'] = 'valid_token_123';
+
+        $middleware = new CsrfMiddleware();
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getMethod')->willReturn('POST');
+        $request->method('getParsedBody')->willReturn([]);
+        $request->method('getHeaderLine')
+            ->with('X-CSRF-Token')
+            ->willReturn('valid_token_123');
+
+        $expectedResponse = new Response();
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->once())
+            ->method('handle')
+            ->willReturn($expectedResponse);
+
+        $response = $middleware->process($request, $handler);
+
+        $this->assertSame($expectedResponse, $response);
+    }
+
     public function testProcessThrowsExceptionForPutWithoutToken(): void
     {
         $middleware = new CsrfMiddleware();

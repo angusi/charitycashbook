@@ -21,8 +21,14 @@ class CsrfMiddleware implements MiddlewareInterface
 
         // Only check state-changing methods
         if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
+            // Check for token in parsed body (form data)
             $body = $request->getParsedBody();
             $token = $body['csrf_token'] ?? '';
+
+            // Also check X-CSRF-Token header (for JSON/AJAX requests)
+            if (empty($token)) {
+                $token = $request->getHeaderLine('X-CSRF-Token');
+            }
 
             if (!$this->validateToken($token)) {
                 throw new CsrfException();
