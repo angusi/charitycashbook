@@ -22,7 +22,7 @@
     </div>
     <div class="flex flex-1 justify-between sm:justify-end gap-2">
         {% if pagination.current_page > 1 %}
-            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.current_page - 1 }}"
+            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/\\?.*/' ? '&' : '?' }}page={{ pagination.current_page - 1 }}"
                class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                 Previous
             </a>
@@ -38,7 +38,7 @@
             {% set end_page = min(pagination.total_pages, pagination.current_page + 2) %}
 
             {% if start_page > 1 %}
-                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page=1"
+                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/\\?.*/' ? '&' : '?' }}page=1"
                    class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">1</a>
                 {% if start_page > 2 %}
                     <span class="relative inline-flex items-center px-3 py-2 text-sm text-gray-500">...</span>
@@ -49,7 +49,7 @@
                 {% if page == pagination.current_page %}
                     <span class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md">{{ page }}</span>
                 {% else %}
-                    <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ page }}"
+                    <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/\\?.*/' ? '&' : '?' }}page={{ page }}"
                        class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">{{ page }}</a>
                 {% endif %}
             {% endfor %}
@@ -58,13 +58,13 @@
                 {% if end_page < pagination.total_pages - 1 %}
                     <span class="relative inline-flex items-center px-3 py-2 text-sm text-gray-500">...</span>
                 {% endif %}
-                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.total_pages }}"
+                <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/\\?.*/' ? '&' : '?' }}page={{ pagination.total_pages }}"
                    class="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 rounded-md hover:bg-gray-50">{{ pagination.total_pages }}</a>
             {% endif %}
         </div>
 
         {% if pagination.current_page < pagination.total_pages %}
-            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/?.*\\?/' ? '&' : '?' }}page={{ pagination.current_page + 1 }}"
+            <a href="{{ pagination.base_url }}{{ pagination.base_url matches '/\\?.*/' ? '&' : '?' }}page={{ pagination.current_page + 1 }}"
                class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                 Next
             </a>
