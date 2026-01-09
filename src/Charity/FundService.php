@@ -80,8 +80,9 @@ class FundService
 
     /**
      * Get fund balance (opening + sum of fund entries)
-     * 
+     *
      * Uses transaction_fund_entries table for accurate multi-fund support.
+     * Only sums transactions from opening_balance_date onwards to avoid double-counting.
      */
     public function getBalance(int $fundId, int $charityId, ?string $asOfDate = null): array
     {
@@ -90,17 +91,27 @@ class FundService
             return ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'balance' => 0];
         }
 
-        $dateCondition = '';
+        $dateConditions = [];
         $params = [$fundId];
-        
+
+        // Only sum transactions from opening_balance_date onwards
+        // (opening balance already includes transactions up to that date)
+        if (!empty($fund['opening_balance_date'])) {
+            $dateConditions[] = 't.transaction_date > ?';
+            $params[] = $fund['opening_balance_date'];
+        }
+
+        // Optionally filter to specific date
         if ($asOfDate) {
-            $dateCondition = 'AND t.transaction_date <= ?';
+            $dateConditions[] = 't.transaction_date <= ?';
             $params[] = $asOfDate;
         }
 
+        $dateCondition = !empty($dateConditions) ? 'AND ' . implode(' AND ', $dateConditions) : '';
+
         // Sum from transaction_fund_entries (amount is already signed: + for receipts, - for payments)
         $totals = $this->db->queryOne(
-            "SELECT 
+            "SELECT
                 COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as receipts,
                 COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as payments
              FROM transaction_fund_entries tfe

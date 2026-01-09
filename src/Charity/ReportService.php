@@ -274,7 +274,7 @@ class ReportService
         string $dateTo
     ): array {
         // Calculate opening balance (balance before period start)
-        $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true);
+        $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
         $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
 
         // Get category totals for the period using entries tables
@@ -343,14 +343,33 @@ class ReportService
 
     /**
      * Calculate balance as of a date using fund entries table
+     * Only sums transactions from opening_balance_date onwards to avoid double-counting
      */
     private function calculateBalanceAsOf(
         int $charityId,
         int $fundId,
         string $date,
-        bool $before = false
+        bool $before = false,
+        ?array $fund = null
     ): array {
         $operator = $before ? '<' : '<=';
+
+        // Get fund to check opening_balance_date (if not already provided)
+        if ($fund === null) {
+            $fund = $this->fundService->get($fundId, $charityId);
+        }
+
+        $dateConditions = ["t.transaction_date $operator ?"];
+        $params = [$charityId, $fundId, $date];
+
+        // Only sum transactions from opening_balance_date onwards
+        // (opening balance already includes transactions up to that date)
+        if ($fund && !empty($fund['opening_balance_date'])) {
+            $dateConditions[] = 't.transaction_date > ?';
+            $params[] = $fund['opening_balance_date'];
+        }
+
+        $dateCondition = implode(' AND ', $dateConditions);
 
         // Use transaction_fund_entries to properly handle split transactions
         $result = $this->db->queryOne(
@@ -360,8 +379,8 @@ class ReportService
              FROM transaction_fund_entries tfe
              JOIN transactions t ON t.id = tfe.transaction_id
              WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.is_deleted = FALSE
-             AND t.transaction_date $operator ?",
-            [$charityId, $fundId, $date]
+             AND ($dateCondition)",
+            $params
         );
 
         return [
@@ -600,7 +619,7 @@ class ReportService
             }
 
             // Get opening balance
-            $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true);
+            $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
             $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
 
             $fundTotals[$fund['id']] = [
