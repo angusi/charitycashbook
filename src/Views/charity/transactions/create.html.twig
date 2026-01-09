@@ -52,15 +52,46 @@
                            placeholder="Cheque number, invoice ref, etc.">
                 </div>
 
-                <div>
-                    <label for="category_id" class="block text-sm font-medium text-gray-700">Category *</label>
-                    <select name="operational_category_id" id="category_id" required
+                <!-- Simple mode: single category -->
+                <div id="simple-category-section">
+                    <div class="flex justify-between items-center">
+                        <label for="category_id" class="block text-sm font-medium text-gray-700">Category *</label>
+                        {% if categories|length > 1 %}
+                        <button type="button" onclick="toggleSplitMode('category')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Split across categories
+                        </button>
+                        {% endif %}
+                    </div>
+                    <select name="operational_category_id" id="category_id"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <option value="">Select a category</option>
                         {% for category in categories %}
                             <option value="{{ category.id }}">{{ category.name }}</option>
                         {% endfor %}
                     </select>
+                </div>
+
+                <!-- Split mode: multiple categories -->
+                <div id="split-category-section" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Category Allocation *</label>
+                        <button type="button" onclick="toggleSplitMode('category')" class="text-xs text-blue-600 hover:text-blue-800">
+                            Use single category
+                        </button>
+                    </div>
+                    <div id="category-entries" class="space-y-2">
+                        <!-- Category entry rows added dynamically -->
+                    </div>
+                    <button type="button" onclick="addCategoryEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                        + Add category
+                    </button>
+                    <div class="mt-2 text-sm">
+                        <span class="text-gray-500">Allocated: £</span>
+                        <span id="category-total" class="font-medium">0.00</span>
+                        <span class="text-gray-500"> / £</span>
+                        <span id="category-target" class="font-medium">0.00</span>
+                        <span id="category-remaining" class="text-gray-500"></span>
+                    </div>
                 </div>
 
                 <!-- Simple mode: single fund -->
@@ -285,11 +316,14 @@
 
 <script>
 const funds = {{ funds|json_encode|raw }};
+const categories = {{ categories|json_encode|raw }};
 const cashBooks = {{ cash_books is defined ? cash_books|json_encode|raw : '[]' }};
 
 let fundSplitMode = false;
+let categorySplitMode = false;
 let cashbookSplitMode = false;
 let fundEntryCount = 0;
+let categoryEntryCount = 0;
 let cashbookEntryCount = 0;
 
 function toggleSplitMode(type) {
@@ -312,6 +346,26 @@ function toggleSplitMode(type) {
             document.getElementById('fund_id').setAttribute('required', 'required');
             document.getElementById('fund-entries').innerHTML = '';
             fundEntryCount = 0;
+        }
+    } else if (type === 'category') {
+        categorySplitMode = !categorySplitMode;
+        document.getElementById('simple-category-section').classList.toggle('hidden', categorySplitMode);
+        document.getElementById('split-category-section').classList.toggle('hidden', !categorySplitMode);
+
+        if (categorySplitMode) {
+            // Clear simple mode and add first entry
+            document.getElementById('category_id').value = '';
+            document.getElementById('category_id').removeAttribute('required');
+            if (categoryEntryCount === 0) {
+                addCategoryEntry();
+                addCategoryEntry();
+            }
+            updateCategoryTotals();
+        } else {
+            // Restore single category mode - clear split entries completely
+            document.getElementById('category_id').setAttribute('required', 'required');
+            document.getElementById('category-entries').innerHTML = '';
+            categoryEntryCount = 0;
         }
     } else if (type === 'cashbook') {
         cashbookSplitMode = !cashbookSplitMode;
@@ -337,7 +391,7 @@ function toggleSplitMode(type) {
 }
 
 function updateSplitMode() {
-    document.getElementById('split_mode').value = (fundSplitMode || cashbookSplitMode) ? '1' : '0';
+    document.getElementById('split_mode').value = (fundSplitMode || categorySplitMode || cashbookSplitMode) ? '1' : '0';
 }
 
 function addFundEntry() {
@@ -375,6 +429,43 @@ function removeFundEntry(idx) {
     const row = document.getElementById(`fund-entry-${idx}`);
     if (row) row.remove();
     updateFundTotals();
+}
+
+function addCategoryEntry() {
+    const container = document.getElementById('category-entries');
+    const idx = categoryEntryCount++;
+
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.id = `category-entry-${idx}`;
+    row.innerHTML = `
+        <select name="category_entries[${idx}][operational_category_id]" required
+                class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <option value="">Select category</option>
+            ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <div class="relative w-32">
+            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                <span class="text-gray-500 sm:text-sm">£</span>
+            </div>
+            <input type="number" name="category_entries[${idx}][amount]" step="0.01" min="0" required
+                   onchange="updateCategoryTotals()" oninput="updateCategoryTotals()"
+                   class="block w-full pl-6 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   placeholder="0.00">
+        </div>
+        <button type="button" onclick="removeCategoryEntry(${idx})" class="text-red-500 hover:text-red-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    `;
+    container.appendChild(row);
+}
+
+function removeCategoryEntry(idx) {
+    const row = document.getElementById(`category-entry-${idx}`);
+    if (row) row.remove();
+    updateCategoryTotals();
 }
 
 function addCashbookEntry() {
@@ -421,12 +512,34 @@ function updateFundTotals() {
     inputs.forEach(input => {
         total += parseFloat(input.value) || 0;
     });
-    
+
     document.getElementById('fund-total').textContent = total.toFixed(2);
     document.getElementById('fund-target').textContent = target.toFixed(2);
-    
+
     const remaining = target - total;
     const remainingEl = document.getElementById('fund-remaining');
+    if (Math.abs(remaining) > 0.01) {
+        remainingEl.textContent = ` (${remaining > 0 ? '+' : ''}${remaining.toFixed(2)} remaining)`;
+        remainingEl.className = remaining > 0 ? 'text-orange-500' : 'text-red-500';
+    } else {
+        remainingEl.textContent = ' ✓';
+        remainingEl.className = 'text-green-500';
+    }
+}
+
+function updateCategoryTotals() {
+    const target = parseFloat(document.getElementById('amount').value) || 0;
+    const inputs = document.querySelectorAll('#category-entries input[type="number"]');
+    let total = 0;
+    inputs.forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+
+    document.getElementById('category-total').textContent = total.toFixed(2);
+    document.getElementById('category-target').textContent = target.toFixed(2);
+
+    const remaining = target - total;
+    const remainingEl = document.getElementById('category-remaining');
     if (Math.abs(remaining) > 0.01) {
         remainingEl.textContent = ` (${remaining > 0 ? '+' : ''}${remaining.toFixed(2)} remaining)`;
         remainingEl.className = remaining > 0 ? 'text-orange-500' : 'text-red-500';
@@ -461,6 +574,7 @@ function updateCashbookTotals() {
 // Update totals when amount changes
 document.getElementById('amount').addEventListener('input', function() {
     if (fundSplitMode) updateFundTotals();
+    if (categorySplitMode) updateCategoryTotals();
     if (cashbookSplitMode) updateCashbookTotals();
 });
 

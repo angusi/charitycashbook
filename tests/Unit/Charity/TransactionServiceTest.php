@@ -418,7 +418,7 @@ class TransactionServiceTest extends TestCase
         $this->db->expects($this->once())
             ->method('query')
             ->with(
-                $this->stringContains('operational_category_id = ?'),
+                $this->stringContains('transaction_category_entries'),
                 $this->callback(fn($params) => in_array(3, $params))
             )
             ->willReturn([]);
@@ -431,7 +431,7 @@ class TransactionServiceTest extends TestCase
         $this->db->expects($this->once())
             ->method('query')
             ->with(
-                $this->stringContains('oc.reporting_category_id = ?'),
+                $this->stringContains('reporting_category_id = ?'),
                 $this->callback(fn($params) => in_array(7, $params))
             )
             ->willReturn([]);
@@ -712,5 +712,112 @@ class TransactionServiceTest extends TestCase
         $this->assertEquals('2025-06-15', $queryParams[1]); // date
         $this->assertEquals(250.50, $queryParams[2]); // amount
         $this->assertEquals('Monthly donation', $queryParams[3]); // description
+    }
+
+    // Category split tests
+    public function testCreateWithCategoryEntriesInsertsCategoryEntries(): void
+    {
+        $this->categoryService->method('getOperationalCategory')->willReturn([
+            'id' => 1,
+            'name' => 'Donations',
+            'category_type' => 'receipt',
+            'giftaid_eligible_default' => false,
+        ]);
+
+        $insertedTables = [];
+        $this->db->method('insert')
+            ->willReturnCallback(function ($table, $data) use (&$insertedTables) {
+                $insertedTables[] = $table;
+                return 1;
+            });
+
+        $this->service->create(1, 1, [
+            'transaction_date' => '2025-01-01',
+            'amount' => 100,
+            'description' => 'Split category test',
+            'fund_id' => 1,
+            'category_entries' => [
+                ['operational_category_id' => 1, 'amount' => 60],
+                ['operational_category_id' => 2, 'amount' => 40],
+            ],
+        ]);
+
+        $this->assertContains('transaction_category_entries', $insertedTables);
+        $this->assertGreaterThanOrEqual(2, array_count_values($insertedTables)['transaction_category_entries'] ?? 0);
+    }
+
+    public function testCreateWithCategoryEntriesValidatesSameType(): void
+    {
+        // First category is receipt
+        $this->categoryService->method('getOperationalCategory')
+            ->willReturnCallback(function ($id) {
+                if ($id === 1) {
+                    return ['id' => 1, 'name' => 'Donations', 'category_type' => 'receipt'];
+                }
+                // Second category is payment - should fail
+                return ['id' => 2, 'name' => 'Expenses', 'category_type' => 'payment'];
+            });
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->create(1, 1, [
+            'transaction_date' => '2025-01-01',
+            'amount' => 100,
+            'description' => 'Mixed category test',
+            'fund_id' => 1,
+            'category_entries' => [
+                ['operational_category_id' => 1, 'amount' => 60],
+                ['operational_category_id' => 2, 'amount' => 40],
+            ],
+        ]);
+    }
+
+    public function testCreateWithCategoryEntriesValidatesAmountSum(): void
+    {
+        $this->categoryService->method('getOperationalCategory')->willReturn([
+            'id' => 1,
+            'name' => 'Donations',
+            'category_type' => 'receipt',
+            'giftaid_eligible_default' => false,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->create(1, 1, [
+            'transaction_date' => '2025-01-01',
+            'amount' => 100,
+            'description' => 'Bad sum test',
+            'fund_id' => 1,
+            'category_entries' => [
+                ['operational_category_id' => 1, 'amount' => 30],
+                ['operational_category_id' => 2, 'amount' => 30],
+            ],
+        ]);
+    }
+
+    public function testCreateRequiresCategoryOrCategoryEntries(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->service->create(1, 1, [
+            'transaction_date' => '2025-01-01',
+            'amount' => 100,
+            'description' => 'No category test',
+            'fund_id' => 1,
+        ]);
+    }
+
+    public function testGetCategoryEntriesReturnsArray(): void
+    {
+        $entries = [
+            ['id' => 1, 'operational_category_id' => 1, 'amount' => 60],
+            ['id' => 2, 'operational_category_id' => 2, 'amount' => 40],
+        ];
+        $this->db->method('query')->willReturn($entries);
+
+        $result = $this->service->getCategoryEntries(1);
+
+        $this->assertIsArray($result);
+        $this->assertCount(2, $result);
     }
 }
