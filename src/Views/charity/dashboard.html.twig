@@ -130,6 +130,9 @@
                                     {% else %}
                                         {{ t.fund_name }}
                                     {% endif %}
+                                    {% if t.category_entry_count > 1 %}
+                                        · <span class="text-purple-600">{{ t.category_entry_count }} categories</span>
+                                    {% endif %}
                                 </p>
                             </div>
                             <p class="text-sm font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">

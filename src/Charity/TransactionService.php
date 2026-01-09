@@ -57,11 +57,11 @@ class TransactionService
                        (SELECT COUNT(*) FROM transaction_cashbook_entries WHERE transaction_id = t.id) as cashbook_entry_count
                 FROM transactions t
                 LEFT JOIN transaction_fund_entries tfe_primary ON tfe_primary.id = (
-                    SELECT MIN(id) FROM transaction_fund_entries WHERE transaction_id = t.id
+                    SELECT id FROM transaction_fund_entries WHERE transaction_id = t.id ORDER BY ABS(amount) DESC LIMIT 1
                 )
                 LEFT JOIN funds pf ON pf.id = tfe_primary.fund_id
                 LEFT JOIN transaction_category_entries tce_primary ON tce_primary.id = (
-                    SELECT MIN(id) FROM transaction_category_entries WHERE transaction_id = t.id
+                    SELECT id FROM transaction_category_entries WHERE transaction_id = t.id ORDER BY ABS(amount) DESC LIMIT 1
                 )
                 LEFT JOIN operational_categories poc ON poc.id = COALESCE(tce_primary.operational_category_id, t.operational_category_id)
                 LEFT JOIN reporting_categories prc ON prc.id = poc.reporting_category_id
@@ -927,6 +927,7 @@ class TransactionService
 
     /**
      * Get transaction totals by category for reporting
+     * Uses category entries table to properly handle split transactions
      */
     public function getTotalsByCategory(
         int $charityId,
@@ -934,20 +935,21 @@ class TransactionService
         string $dateTo,
         ?int $fundId = null
     ): array {
-        $sql = "SELECT 
+        $sql = "SELECT
                     rc.id as reporting_category_id,
                     rc.name as reporting_category_name,
                     rc.category_type,
                     rc.display_order,
-                    COALESCE(SUM(t.amount), 0) as total
+                    COALESCE(SUM(ABS(tce.amount)), 0) as total
                 FROM reporting_categories rc
                 LEFT JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-                LEFT JOIN transactions t ON t.operational_category_id = oc.id 
+                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
+                LEFT JOIN transactions t ON t.id = tce.transaction_id
                     AND t.charity_id = ?
                     AND t.is_deleted = FALSE
                     AND t.transaction_date >= ?
                     AND t.transaction_date <= ?";
-        
+
         $params = [$charityId, $dateFrom, $dateTo];
 
         if ($fundId) {
@@ -959,7 +961,7 @@ class TransactionService
         $sql .= " WHERE rc.charity_id = ? AND rc.is_active = TRUE
                   GROUP BY rc.id, rc.name, rc.category_type, rc.display_order
                   ORDER BY rc.category_type, rc.display_order";
-        
+
         $params[] = $charityId;
 
         return $this->db->query($sql, $params);

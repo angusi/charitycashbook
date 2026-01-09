@@ -119,7 +119,7 @@ class ReportController extends BaseController
         $transactionService = $this->get(TransactionService::class);
         $fundService = $this->get(FundService::class);
         
-        $dateFrom = $params['date_from'] ?? date('Y-m-01');
+        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
         $dateTo = $params['date_to'] ?? date('Y-m-d');
         $fundId = !empty($params['fund_id']) ? (int) $params['fund_id'] : null;
         $type = $params['type'] ?? null;
@@ -188,15 +188,15 @@ class ReportController extends BaseController
         $charity = $request->getAttribute('charity');
         $userRole = $request->getAttribute('user_role');
         $params = $this->getQueryParams($request);
-        
+
         $reportService = $this->get(ReportService::class);
-        
+
         $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
         $dateTo = $params['date_to'] ?? date('Y-m-d');
         $type = $params['type'] ?? 'receipt';
-        
+
         $report = $reportService->categoryAnalysis($charityId, $dateFrom, $dateTo, $type);
-        
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/reports/category_analysis.html.twig', array_merge(
             $this->getCommonTemplateData($request),
@@ -205,6 +205,32 @@ class ReportController extends BaseController
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
                 'type' => $type,
+            ]
+        ));
+    }
+
+    public function fundOperationalBreakdown(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $charity = $request->getAttribute('charity');
+        $userRole = $request->getAttribute('user_role');
+        $params = $this->getQueryParams($request);
+
+        $reportService = $this->get(ReportService::class);
+
+        // Default to current financial year
+        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
+        $dateTo = $params['date_to'] ?? date('Y-m-d');
+
+        $report = $reportService->fundByFundOperationalBreakdown($charityId, $dateFrom, $dateTo);
+
+        $view = Twig::fromRequest($request);
+        return $view->render($response, 'charity/reports/fund_operational_breakdown.html.twig', array_merge(
+            $this->getCommonTemplateData($request),
+            [
+                'report' => $report,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
             ]
         ));
     }

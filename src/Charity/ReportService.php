@@ -134,7 +134,8 @@ class ReportService
         $funds = $this->fundService->getAll($charityId);
         
         // Query all transactions grouped by operational category and fund type
-        $sql = "SELECT 
+        // Uses entries tables to properly handle split transactions
+        $sql = "SELECT
                     rc.id as reporting_category_id,
                     rc.name as reporting_category_name,
                     rc.category_type,
@@ -143,15 +144,17 @@ class ReportService
                     oc.name as operational_category_name,
                     oc.display_order as oc_display_order,
                     f.fund_type,
-                    COALESCE(SUM(t.amount), 0) as total
+                    COALESCE(SUM(ABS(tce.amount)), 0) as total
                 FROM reporting_categories rc
                 JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-                LEFT JOIN transactions t ON t.operational_category_id = oc.id 
+                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
+                LEFT JOIN transactions t ON t.id = tce.transaction_id
                     AND t.charity_id = ?
                     AND t.is_deleted = FALSE
                     AND t.transaction_date >= ?
                     AND t.transaction_date <= ?
-                LEFT JOIN funds f ON f.id = t.fund_id
+                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
+                LEFT JOIN funds f ON f.id = tfe.fund_id
                 WHERE rc.charity_id = ? AND rc.is_active = TRUE AND oc.is_active = TRUE
                 GROUP BY rc.id, rc.name, rc.category_type, rc.display_order,
                          oc.id, oc.name, oc.display_order, f.fund_type
@@ -274,22 +277,32 @@ class ReportService
         $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true);
         $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
 
-        // Get category totals for the period
+        // Get category totals for the period using entries tables
+        // This properly handles split transactions by summing amounts from entries
         $categoryTotals = $this->db->query(
             "SELECT rc.id as category_id, rc.name, rc.category_type,
-                    COALESCE(SUM(t.amount), 0) as total
+                    COALESCE(SUM(
+                        CASE WHEN tfe.fund_id = ? THEN
+                            -- Pro-rate category amount based on fund allocation
+                            ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
+                                (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
+                                0
+                            ))
+                        ELSE 0 END
+                    ), 0) as total
              FROM reporting_categories rc
              LEFT JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-             LEFT JOIN transactions t ON t.operational_category_id = oc.id 
-                 AND t.charity_id = ? 
-                 AND t.fund_id = ?
+             LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
+             LEFT JOIN transactions t ON t.id = tce.transaction_id
+                 AND t.charity_id = ?
                  AND t.is_deleted = FALSE
                  AND t.transaction_date >= ?
                  AND t.transaction_date <= ?
+             LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
              WHERE rc.charity_id = ? AND rc.is_active = TRUE
              GROUP BY rc.id, rc.name, rc.category_type
              ORDER BY rc.category_type, rc.display_order",
-            [$charityId, $fund['id'], $dateFrom, $dateTo, $charityId]
+            [$fund['id'], $charityId, $dateFrom, $dateTo, $charityId]
         );
 
         $receipts = [];
@@ -329,7 +342,7 @@ class ReportService
     }
 
     /**
-     * Calculate balance as of a date
+     * Calculate balance as of a date using fund entries table
      */
     private function calculateBalanceAsOf(
         int $charityId,
@@ -338,14 +351,16 @@ class ReportService
         bool $before = false
     ): array {
         $operator = $before ? '<' : '<=';
-        
+
+        // Use transaction_fund_entries to properly handle split transactions
         $result = $this->db->queryOne(
-            "SELECT 
-                COALESCE(SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END), 0) as receipts,
-                COALESCE(SUM(CASE WHEN transaction_type = 'payment' THEN amount ELSE 0 END), 0) as payments
-             FROM transactions
-             WHERE charity_id = ? AND fund_id = ? AND is_deleted = FALSE
-             AND transaction_date $operator ?",
+            "SELECT
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'receipt' THEN ABS(tfe.amount) ELSE 0 END), 0) as receipts,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'payment' THEN ABS(tfe.amount) ELSE 0 END), 0) as payments
+             FROM transaction_fund_entries tfe
+             JOIN transactions t ON t.id = tfe.transaction_id
+             WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.is_deleted = FALSE
+             AND t.transaction_date $operator ?",
             [$charityId, $fundId, $date]
         );
 
@@ -495,7 +510,140 @@ class ReportService
     }
 
     /**
+     * Generate fund-by-fund breakdown with operational category detail
+     * Shows each fund as a column with operational categories listed
+     */
+    public function fundByFundOperationalBreakdown(
+        int $charityId,
+        string $dateFrom,
+        string $dateTo
+    ): array {
+        $funds = $this->fundService->getAll($charityId);
+        $operationalCategories = $this->categoryService->getOperationalCategories($charityId);
+
+        // Group operational categories by type
+        $receiptCategories = [];
+        $paymentCategories = [];
+        foreach ($operationalCategories as $cat) {
+            $entry = [
+                'id' => $cat['id'],
+                'name' => $cat['name'],
+                'reporting_category_name' => $cat['reporting_category_name'] ?? '',
+                'funds' => [],
+                'total' => 0.0,
+            ];
+            foreach ($funds as $fund) {
+                $entry['funds'][$fund['id']] = 0.0;
+            }
+            if ($cat['category_type'] === 'receipt') {
+                $receiptCategories[$cat['id']] = $entry;
+            } else {
+                $paymentCategories[$cat['id']] = $entry;
+            }
+        }
+
+        // Query all amounts by operational category and fund
+        // Pro-rates when a transaction is split across multiple funds
+        $sql = "SELECT
+                    oc.id as category_id,
+                    rc.category_type,
+                    tfe.fund_id,
+                    COALESCE(SUM(
+                        ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
+                            (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
+                            0
+                        ))
+                    ), 0) as total
+                FROM operational_categories oc
+                JOIN reporting_categories rc ON rc.id = oc.reporting_category_id
+                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
+                LEFT JOIN transactions t ON t.id = tce.transaction_id
+                    AND t.charity_id = ?
+                    AND t.is_deleted = FALSE
+                    AND t.transaction_date >= ?
+                    AND t.transaction_date <= ?
+                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
+                WHERE oc.charity_id = ? AND oc.is_active = TRUE
+                GROUP BY oc.id, rc.category_type, tfe.fund_id";
+
+        $rows = $this->db->query($sql, [$charityId, $dateFrom, $dateTo, $charityId]);
+
+        // Populate category amounts
+        foreach ($rows as $row) {
+            $catId = $row['category_id'];
+            $fundId = $row['fund_id'];
+            $amount = (float) $row['total'];
+
+            if ($fundId === null) {
+                continue;
+            }
+
+            if ($row['category_type'] === 'receipt' && isset($receiptCategories[$catId])) {
+                $receiptCategories[$catId]['funds'][$fundId] = $amount;
+                $receiptCategories[$catId]['total'] += $amount;
+            } elseif ($row['category_type'] === 'payment' && isset($paymentCategories[$catId])) {
+                $paymentCategories[$catId]['funds'][$fundId] = $amount;
+                $paymentCategories[$catId]['total'] += $amount;
+            }
+        }
+
+        // Calculate fund totals
+        $fundTotals = [];
+        foreach ($funds as $fund) {
+            $receiptsTotal = 0.0;
+            $paymentsTotal = 0.0;
+            foreach ($receiptCategories as $cat) {
+                $receiptsTotal += $cat['funds'][$fund['id']];
+            }
+            foreach ($paymentCategories as $cat) {
+                $paymentsTotal += $cat['funds'][$fund['id']];
+            }
+
+            // Get opening balance
+            $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true);
+            $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
+
+            $fundTotals[$fund['id']] = [
+                'fund' => $fund,
+                'opening' => $opening,
+                'receipts' => $receiptsTotal,
+                'payments' => $paymentsTotal,
+                'closing' => $opening + $receiptsTotal - $paymentsTotal,
+            ];
+        }
+
+        // Calculate grand totals
+        $grandTotals = [
+            'opening' => 0.0,
+            'receipts' => 0.0,
+            'payments' => 0.0,
+            'closing' => 0.0,
+        ];
+        foreach ($fundTotals as $ft) {
+            $grandTotals['opening'] += $ft['opening'];
+            $grandTotals['receipts'] += $ft['receipts'];
+            $grandTotals['payments'] += $ft['payments'];
+            $grandTotals['closing'] += $ft['closing'];
+        }
+
+        // Filter out empty categories and convert to indexed arrays
+        $receiptCategories = array_values(array_filter($receiptCategories, fn($c) => $c['total'] > 0));
+        $paymentCategories = array_values(array_filter($paymentCategories, fn($c) => $c['total'] > 0));
+
+        return [
+            'period_start' => $dateFrom,
+            'period_end' => $dateTo,
+            'funds' => $funds,
+            'fund_totals' => $fundTotals,
+            'receipt_categories' => $receiptCategories,
+            'payment_categories' => $paymentCategories,
+            'grand_totals' => $grandTotals,
+        ];
+    }
+
+    /**
      * Generate Category Analysis report
+     * Uses category entries table to properly handle split transactions
      */
     public function categoryAnalysis(
         int $charityId,
@@ -503,17 +651,18 @@ class ReportService
         string $dateTo,
         ?string $type = null
     ): array {
-        $sql = "SELECT 
+        $sql = "SELECT
                     rc.id as reporting_category_id,
                     rc.name as reporting_category_name,
                     rc.category_type,
                     oc.id as operational_category_id,
                     oc.name as operational_category_name,
-                    COALESCE(SUM(t.amount), 0) as total,
-                    COUNT(t.id) as transaction_count
+                    COALESCE(SUM(ABS(tce.amount)), 0) as total,
+                    COUNT(DISTINCT t.id) as transaction_count
                 FROM reporting_categories rc
                 JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-                LEFT JOIN transactions t ON t.operational_category_id = oc.id 
+                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
+                LEFT JOIN transactions t ON t.id = tce.transaction_id
                     AND t.charity_id = ?
                     AND t.is_deleted = FALSE
                     AND t.transaction_date >= ?

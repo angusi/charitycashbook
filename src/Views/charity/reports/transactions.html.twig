@@ -156,8 +156,22 @@
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ t.transaction_date }}</td>
                     <td class="px-6 py-4 text-sm text-gray-900">{{ t.description }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ t.fund_name }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ t.category_name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ t.fund_name }}
+                        {% if t.fund_entry_count > 1 %}
+                            <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Split across {{ t.fund_entry_count }} funds">
+                                +{{ t.fund_entry_count - 1 }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ t.category_name }}
+                        {% if t.category_entry_count > 1 %}
+                            <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800" title="Split across {{ t.category_entry_count }} categories">
+                                +{{ t.category_entry_count - 1 }}
+                            </span>
+                        {% endif %}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
                         {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
                     </td>

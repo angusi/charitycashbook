@@ -237,6 +237,7 @@ return function (App $app) {
             $reports->get('/receipts-payments', \CharityCashbook\Charity\Controllers\ReportController::class . ':receiptsPayments');
             $reports->get('/receipts-payments-detailed', \CharityCashbook\Charity\Controllers\ReportController::class . ':receiptsPaymentsDetailed');
             $reports->get('/fund-breakdown', \CharityCashbook\Charity\Controllers\ReportController::class . ':fundBreakdown');
+            $reports->get('/fund-operational-breakdown', \CharityCashbook\Charity\Controllers\ReportController::class . ':fundOperationalBreakdown');
             $reports->get('/transactions', \CharityCashbook\Charity\Controllers\ReportController::class . ':transactions');
             $reports->get('/fund-summary', \CharityCashbook\Charity\Controllers\ReportController::class . ':fundSummary');
             $reports->get('/category-analysis', \CharityCashbook\Charity\Controllers\ReportController::class . ':categoryAnalysis');

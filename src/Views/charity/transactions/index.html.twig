@@ -123,6 +123,11 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {{ t.category_name }}
+                            {% if t.category_entry_count > 1 %}
+                                <span class="ml-1 inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800" title="Split across {{ t.category_entry_count }} categories">
+                                    +{{ t.category_entry_count - 1 }}
+                                </span>
+                            {% endif %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
                             {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
