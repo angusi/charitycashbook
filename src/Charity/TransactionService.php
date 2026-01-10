@@ -736,7 +736,7 @@ class TransactionService
         if (!empty($data['operational_category_id'])) {
             return [[
                 'operational_category_id' => (int) $data['operational_category_id'],
-                'amount' => (float) $data['amount'], // Unsigned at this point
+                'amount' => (float) ($data['amount'] ?? 0), // Unsigned at this point
             ]];
         }
 

@@ -123,11 +123,11 @@ class FundService
             $params
         );
 
-        $opening = (float) $fund['opening_balance'];
-        $receipts = (float) $totals['receipts'];
-        $payments = (float) $totals['payments'];
-        $transfersIn = (float) $totals['transfers_in'];
-        $transfersOut = (float) $totals['transfers_out'];
+        $opening = (float) ($fund['opening_balance'] ?? 0);
+        $receipts = (float) ($totals['receipts'] ?? 0);
+        $payments = (float) ($totals['payments'] ?? 0);
+        $transfersIn = (float) ($totals['transfers_in'] ?? 0);
+        $transfersOut = (float) ($totals['transfers_out'] ?? 0);
 
         return [
             'opening' => $opening,

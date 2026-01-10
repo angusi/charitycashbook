@@ -10,6 +10,7 @@
         </testsuite>
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
+            <exclude>tests/Integration/BaseIntegrationTest.php</exclude>
         </testsuite>
     </testsuites>
     <source>

@@ -289,8 +289,8 @@ class ReportService
                    AND t.transaction_date >= ? AND t.transaction_date <= ?",
             [$charityId, $fund['id'], $dateFrom, $dateTo]
         );
-        $transfersIn = (float) $periodTransfers['transfers_in'];
-        $transfersOut = (float) $periodTransfers['transfers_out'];
+        $transfersIn = (float) ($periodTransfers['transfers_in'] ?? 0);
+        $transfersOut = (float) ($periodTransfers['transfers_out'] ?? 0);
 
         // Get category totals for the period using entries tables
         // This properly handles split transactions by summing amounts from entries
@@ -404,10 +404,10 @@ class ReportService
         );
 
         return [
-            'receipts' => (float) $result['receipts'],
-            'payments' => (float) $result['payments'],
-            'transfers_in' => (float) $result['transfers_in'],
-            'transfers_out' => (float) $result['transfers_out'],
+            'receipts' => (float) ($result['receipts'] ?? 0),
+            'payments' => (float) ($result['payments'] ?? 0),
+            'transfers_in' => (float) ($result['transfers_in'] ?? 0),
+            'transfers_out' => (float) ($result['transfers_out'] ?? 0),
         ];
     }
 
@@ -426,19 +426,19 @@ class ReportService
 
         foreach ($funds as $fund) {
             $type = $fund['fund_type'];
-            $totals[$type]['opening'] += $fund['opening'];
-            $totals[$type]['receipts'] += $fund['receipts'];
-            $totals[$type]['payments'] += $fund['payments'];
-            $totals[$type]['transfers_in'] += $fund['transfers_in'];
-            $totals[$type]['transfers_out'] += $fund['transfers_out'];
-            $totals[$type]['balance'] += $fund['balance'];
+            $totals[$type]['opening'] += $fund['opening'] ?? 0;
+            $totals[$type]['receipts'] += $fund['receipts'] ?? 0;
+            $totals[$type]['payments'] += $fund['payments'] ?? 0;
+            $totals[$type]['transfers_in'] += $fund['transfers_in'] ?? 0;
+            $totals[$type]['transfers_out'] += $fund['transfers_out'] ?? 0;
+            $totals[$type]['balance'] += $fund['balance'] ?? 0;
 
-            $totals['total']['opening'] += $fund['opening'];
-            $totals['total']['receipts'] += $fund['receipts'];
-            $totals['total']['payments'] += $fund['payments'];
-            $totals['total']['transfers_in'] += $fund['transfers_in'];
-            $totals['total']['transfers_out'] += $fund['transfers_out'];
-            $totals['total']['balance'] += $fund['balance'];
+            $totals['total']['opening'] += $fund['opening'] ?? 0;
+            $totals['total']['receipts'] += $fund['receipts'] ?? 0;
+            $totals['total']['payments'] += $fund['payments'] ?? 0;
+            $totals['total']['transfers_in'] += $fund['transfers_in'] ?? 0;
+            $totals['total']['transfers_out'] += $fund['transfers_out'] ?? 0;
+            $totals['total']['balance'] += $fund['balance'] ?? 0;
         }
 
         return [
