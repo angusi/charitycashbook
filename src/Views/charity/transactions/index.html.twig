@@ -10,13 +10,17 @@
     </div>
     {% if permissions.transactions_create %}
         <div class="space-x-2">
-            <a href="/charity/{{ charity.id }}/transactions/create?type=receipt" 
+            <a href="/charity/{{ charity.id }}/transactions/create?type=receipt"
                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700">
                 + Receipt
             </a>
-            <a href="/charity/{{ charity.id }}/transactions/create?type=payment" 
+            <a href="/charity/{{ charity.id }}/transactions/create?type=payment"
                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700">
                 + Payment
+            </a>
+            <a href="/charity/{{ charity.id }}/transactions/create?type=transfer"
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                + Transfer
             </a>
         </div>
     {% endif %}
@@ -52,6 +56,7 @@
                 <option value="">All Types</option>
                 <option value="receipt" {{ filters.type == 'receipt' ? 'selected' : '' }}>Receipts</option>
                 <option value="payment" {{ filters.type == 'payment' ? 'selected' : '' }}>Payments</option>
+                <option value="transfer" {{ filters.type == 'transfer' ? 'selected' : '' }}>Transfers</option>
             </select>
         </div>
         <div class="flex items-end">
@@ -129,8 +134,14 @@
                                 </span>
                             {% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
-                            {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {% if t.transaction_type == 'receipt' %}text-green-600{% elseif t.transaction_type == 'payment' %}text-red-600{% else %}text-blue-600{% endif %}">
+                            {% if t.transaction_type == 'receipt' %}
+                                +£{{ t.amount|number_format(2) }}
+                            {% elseif t.transaction_type == 'payment' %}
+                                -£{{ t.amount|number_format(2) }}
+                            {% else %}
+                                ⇄ £{{ t.amount|number_format(2) }}
+                            {% endif %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-center">
                             {% if t.giftaid_status == 'claimed' %}

@@ -134,7 +134,7 @@ class ReportService
         $funds = $this->fundService->getAll($charityId);
         
         // Query all transactions grouped by operational category and fund type
-        // Uses entries tables to properly handle split transactions
+        // Uses transaction's primary fund to determine fund type (avoids Cartesian product with fund entries)
         $sql = "SELECT
                     rc.id as reporting_category_id,
                     rc.name as reporting_category_name,
@@ -153,8 +153,7 @@ class ReportService
                     AND t.is_deleted = FALSE
                     AND t.transaction_date >= ?
                     AND t.transaction_date <= ?
-                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
-                LEFT JOIN funds f ON f.id = tfe.fund_id
+                LEFT JOIN funds f ON f.id = t.fund_id
                 WHERE rc.charity_id = ? AND rc.is_active = TRUE AND oc.is_active = TRUE
                 GROUP BY rc.id, rc.name, rc.category_type, rc.display_order,
                          oc.id, oc.name, oc.display_order, f.fund_type
@@ -275,7 +274,23 @@ class ReportService
     ): array {
         // Calculate opening balance (balance before period start)
         $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
-        $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
+        $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments']
+                   + $priorBalance['transfers_in'] - $priorBalance['transfers_out'];
+
+        // Get transfers for this fund during the period
+        $periodTransfers = $this->db->queryOne(
+            "SELECT
+                COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
+                COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
+             FROM transaction_fund_entries tfe
+             JOIN transactions t ON t.id = tfe.transaction_id
+             WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.transaction_type = 'transfer'
+                   AND t.is_deleted = FALSE
+                   AND t.transaction_date >= ? AND t.transaction_date <= ?",
+            [$charityId, $fund['id'], $dateFrom, $dateTo]
+        );
+        $transfersIn = (float) $periodTransfers['transfers_in'];
+        $transfersOut = (float) $periodTransfers['transfers_out'];
 
         // Get category totals for the period using entries tables
         // This properly handles split transactions by summing amounts from entries
@@ -325,7 +340,7 @@ class ReportService
             }
         }
 
-        $closing = $opening + $receiptsTotal - $paymentsTotal;
+        $closing = $opening + $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut;
 
         return [
             'fund_id' => $fund['id'],
@@ -336,7 +351,9 @@ class ReportService
             'receipts_total' => $receiptsTotal,
             'payments' => $payments,
             'payments_total' => $paymentsTotal,
-            'net_movement' => $receiptsTotal - $paymentsTotal,
+            'transfers_in' => $transfersIn,
+            'transfers_out' => $transfersOut,
+            'net_movement' => $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut,
             'closing' => $closing,
         ];
     }
@@ -372,10 +389,13 @@ class ReportService
         $dateCondition = implode(' AND ', $dateConditions);
 
         // Use transaction_fund_entries to properly handle split transactions
+        // Track receipts, payments, and transfers separately
         $result = $this->db->queryOne(
             "SELECT
                 COALESCE(SUM(CASE WHEN t.transaction_type = 'receipt' THEN ABS(tfe.amount) ELSE 0 END), 0) as receipts,
-                COALESCE(SUM(CASE WHEN t.transaction_type = 'payment' THEN ABS(tfe.amount) ELSE 0 END), 0) as payments
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'payment' THEN ABS(tfe.amount) ELSE 0 END), 0) as payments,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
              FROM transaction_fund_entries tfe
              JOIN transactions t ON t.id = tfe.transaction_id
              WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.is_deleted = FALSE
@@ -386,6 +406,8 @@ class ReportService
         return [
             'receipts' => (float) $result['receipts'],
             'payments' => (float) $result['payments'],
+            'transfers_in' => (float) $result['transfers_in'],
+            'transfers_out' => (float) $result['transfers_out'],
         ];
     }
 
@@ -397,9 +419,9 @@ class ReportService
         $funds = $this->fundService->getAllBalances($charityId, $asOfDate);
         
         $totals = [
-            'unrestricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'balance' => 0],
-            'restricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'balance' => 0],
-            'total' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'balance' => 0],
+            'unrestricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
+            'restricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
+            'total' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
         ];
 
         foreach ($funds as $fund) {
@@ -407,11 +429,15 @@ class ReportService
             $totals[$type]['opening'] += $fund['opening'];
             $totals[$type]['receipts'] += $fund['receipts'];
             $totals[$type]['payments'] += $fund['payments'];
+            $totals[$type]['transfers_in'] += $fund['transfers_in'];
+            $totals[$type]['transfers_out'] += $fund['transfers_out'];
             $totals[$type]['balance'] += $fund['balance'];
 
             $totals['total']['opening'] += $fund['opening'];
             $totals['total']['receipts'] += $fund['receipts'];
             $totals['total']['payments'] += $fund['payments'];
+            $totals['total']['transfers_in'] += $fund['transfers_in'];
+            $totals['total']['transfers_out'] += $fund['transfers_out'];
             $totals['total']['balance'] += $fund['balance'];
         }
 
@@ -463,6 +489,8 @@ class ReportService
                 'opening' => 0.0,
                 'receipts' => 0.0,
                 'payments' => 0.0,
+                'transfers_in' => 0.0,
+                'transfers_out' => 0.0,
                 'closing' => 0.0,
             ];
         }
@@ -480,6 +508,8 @@ class ReportService
             $fundTotals[$fund['id']]['opening'] = $fundReport['opening'];
             $fundTotals[$fund['id']]['receipts'] = $fundReport['receipts_total'];
             $fundTotals[$fund['id']]['payments'] = $fundReport['payments_total'];
+            $fundTotals[$fund['id']]['transfers_in'] = $fundReport['transfers_in'];
+            $fundTotals[$fund['id']]['transfers_out'] = $fundReport['transfers_out'];
             $fundTotals[$fund['id']]['closing'] = $fundReport['closing'];
 
             // Populate receipt categories
@@ -504,12 +534,16 @@ class ReportService
             'opening' => 0.0,
             'receipts' => 0.0,
             'payments' => 0.0,
+            'transfers_in' => 0.0,
+            'transfers_out' => 0.0,
             'closing' => 0.0,
         ];
         foreach ($fundTotals as $ft) {
             $grandTotals['opening'] += $ft['opening'];
             $grandTotals['receipts'] += $ft['receipts'];
             $grandTotals['payments'] += $ft['payments'];
+            $grandTotals['transfers_in'] += $ft['transfers_in'];
+            $grandTotals['transfers_out'] += $ft['transfers_out'];
             $grandTotals['closing'] += $ft['closing'];
         }
 
@@ -620,14 +654,32 @@ class ReportService
 
             // Get opening balance
             $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
-            $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments'];
+            $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments']
+                       + $priorBalance['transfers_in'] - $priorBalance['transfers_out'];
+
+            // Get transfers for this fund during the period
+            $periodTransfers = $this->db->queryOne(
+                "SELECT
+                    COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
+                    COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
+                 FROM transaction_fund_entries tfe
+                 JOIN transactions t ON t.id = tfe.transaction_id
+                 WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.transaction_type = 'transfer'
+                       AND t.is_deleted = FALSE
+                       AND t.transaction_date >= ? AND t.transaction_date <= ?",
+                [$charityId, $fund['id'], $dateFrom, $dateTo]
+            );
+            $transfersIn = (float) $periodTransfers['transfers_in'];
+            $transfersOut = (float) $periodTransfers['transfers_out'];
 
             $fundTotals[$fund['id']] = [
                 'fund' => $fund,
                 'opening' => $opening,
                 'receipts' => $receiptsTotal,
                 'payments' => $paymentsTotal,
-                'closing' => $opening + $receiptsTotal - $paymentsTotal,
+                'transfers_in' => $transfersIn,
+                'transfers_out' => $transfersOut,
+                'closing' => $opening + $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut,
             ];
         }
 
@@ -636,12 +688,16 @@ class ReportService
             'opening' => 0.0,
             'receipts' => 0.0,
             'payments' => 0.0,
+            'transfers_in' => 0.0,
+            'transfers_out' => 0.0,
             'closing' => 0.0,
         ];
         foreach ($fundTotals as $ft) {
             $grandTotals['opening'] += $ft['opening'];
             $grandTotals['receipts'] += $ft['receipts'];
             $grandTotals['payments'] += $ft['payments'];
+            $grandTotals['transfers_in'] += $ft['transfers_in'];
+            $grandTotals['transfers_out'] += $ft['transfers_out'];
             $grandTotals['closing'] += $ft['closing'];
         }
 

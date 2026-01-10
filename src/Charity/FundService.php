@@ -88,7 +88,7 @@ class FundService
     {
         $fund = $this->get($fundId, $charityId);
         if (!$fund) {
-            return ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'balance' => 0];
+            return ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0];
         }
 
         $dateConditions = [];
@@ -109,11 +109,14 @@ class FundService
 
         $dateCondition = !empty($dateConditions) ? 'AND ' . implode(' AND ', $dateConditions) : '';
 
-        // Sum from transaction_fund_entries (amount is already signed: + for receipts, - for payments)
+        // Sum from transaction_fund_entries
+        // Track receipts, payments, and transfers separately
         $totals = $this->db->queryOne(
             "SELECT
-                COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as receipts,
-                COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as payments
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'receipt' THEN ABS(tfe.amount) ELSE 0 END), 0) as receipts,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'payment' THEN ABS(tfe.amount) ELSE 0 END), 0) as payments,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
              FROM transaction_fund_entries tfe
              JOIN transactions t ON t.id = tfe.transaction_id
              WHERE tfe.fund_id = ? AND t.is_deleted = FALSE $dateCondition",
@@ -123,12 +126,16 @@ class FundService
         $opening = (float) $fund['opening_balance'];
         $receipts = (float) $totals['receipts'];
         $payments = (float) $totals['payments'];
+        $transfersIn = (float) $totals['transfers_in'];
+        $transfersOut = (float) $totals['transfers_out'];
 
         return [
             'opening' => $opening,
             'receipts' => $receipts,
             'payments' => $payments,
-            'balance' => $opening + $receipts - $payments,
+            'transfers_in' => $transfersIn,
+            'transfers_out' => $transfersOut,
+            'balance' => $opening + $receipts - $payments + $transfersIn - $transfersOut,
         ];
     }
 

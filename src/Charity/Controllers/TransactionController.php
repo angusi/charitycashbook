@@ -130,9 +130,14 @@ class TransactionController extends BaseController
         $moduleService = $this->get(ModuleService::class);
         
         $type = $params['type'] ?? 'receipt';
-        
+
+        // Validate type
+        if (!in_array($type, ['receipt', 'payment', 'transfer'])) {
+            $type = 'receipt';
+        }
+
         $funds = $fundService->getAll($charityId);
-        $categories = $categoryService->getOperationalCategories($charityId, $type);
+        $categories = ($type !== 'transfer') ? $categoryService->getOperationalCategories($charityId, $type) : [];
         $donors = ($type === 'receipt') ? $donorService->getAll($charityId) : [];
         
         // Get cash books if module is enabled
@@ -143,7 +148,9 @@ class TransactionController extends BaseController
         }
         
         $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/transactions/create.html.twig', array_merge(
+        $template = ($type === 'transfer') ? 'charity/transactions/create_transfer.html.twig' : 'charity/transactions/create.html.twig';
+
+        return $view->render($response, $template, array_merge(
             $this->getCommonTemplateData($request),
             [
                 'type' => $type,
@@ -164,6 +171,7 @@ class TransactionController extends BaseController
         try {
             $transactionService = $this->get(TransactionService::class);
             $id = $transactionService->create($charityId, $userId, [
+                'transaction_type' => $data['type'] ?? null, // Explicitly pass transaction type
                 'transaction_date' => $data['transaction_date'],
                 'amount' => (float) $data['amount'],
                 'description' => $data['description'],
@@ -214,9 +222,11 @@ class TransactionController extends BaseController
         }
         
         $funds = $fundService->getAll($charityId);
-        $categories = $categoryService->getOperationalCategories($charityId, $transaction['transaction_type']);
+        $categories = ($transaction['transaction_type'] !== 'transfer')
+            ? $categoryService->getOperationalCategories($charityId, $transaction['transaction_type'])
+            : [];
         $donors = ($transaction['transaction_type'] === 'receipt') ? $donorService->getAll($charityId) : [];
-        
+
         // Get cash books if module is enabled
         $cash_books = [];
         $moduleService = $this->get(ModuleService::class);
@@ -224,9 +234,13 @@ class TransactionController extends BaseController
             $cashBookService = $this->get(CashBookService::class);
             $cash_books = $cashBookService->getCashBooks($charityId);
         }
-        
+
         $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/transactions/edit.html.twig', array_merge(
+        $template = ($transaction['transaction_type'] === 'transfer')
+            ? 'charity/transactions/edit_transfer.html.twig'
+            : 'charity/transactions/edit.html.twig';
+
+        return $view->render($response, $template, array_merge(
             $this->getCommonTemplateData($request),
             [
                 'transaction' => $transaction,
@@ -248,6 +262,7 @@ class TransactionController extends BaseController
         try {
             $transactionService = $this->get(TransactionService::class);
             $transactionService->update($transactionId, $charityId, $userId, [
+                'transaction_type' => $data['type'] ?? null, // Explicitly pass transaction type
                 'transaction_date' => $data['transaction_date'],
                 'amount' => (float) $data['amount'],
                 'description' => $data['description'],

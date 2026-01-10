@@ -233,6 +233,8 @@ class FundServiceTest extends TestCase
             'opening' => 0,
             'receipts' => 0,
             'payments' => 0,
+            'transfers_in' => 0,
+            'transfers_out' => 0,
             'balance' => 0,
         ], $result);
     }

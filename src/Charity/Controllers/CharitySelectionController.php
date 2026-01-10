@@ -80,36 +80,21 @@ class CharitySelectionController extends BaseController
             return $this->redirect($response, '/charity/' . $charityId);
         }
         
-        // For sensitive action reauth requests, redirect to OAuth to force actual re-authentication
-        if ($isSensitiveReauth) {
-            if (session_status() !== PHP_SESSION_ACTIVE) {
-                session_start();
-            }
-            // Store charity context for post-OAuth processing
-            // Include user_id to verify same user completes the reauth
-            $_SESSION['charity_reauth'] = [
-                'user_id' => $userId,
-                'charity_id' => $charityId,
-                'redirect_url' => $_SESSION['reauth_redirect'] ?? null,
-            ];
-            unset($_SESSION['reauth_redirect']);
-            
-            // Redirect to login with reauth flag (this destroys the session and forces OAuth)
-            return $this->redirect($response, '/login?reauth=1');
+        // No valid session OR sensitive reauth - require OAuth authentication
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
         }
-        
-        // Normal charity entry or expired session - just refresh/create the charity session
-        $sessionManager->refreshCharitySession(
-            $session->getId(),
-            $charityId,
-            $membership['role'],
-            0, // identity ID - would be set from OAuth
-            $charity['session_timeout_hours']
-        );
-        
-        // Update last authenticated
-        $charityRepo->updateLastAuthenticated($charityId, $userId);
-        
-        return $this->redirect($response, '/charity/' . $charityId);
+
+        // Store charity context for post-OAuth processing
+        // Include user_id to verify same user completes the reauth
+        $_SESSION['charity_reauth'] = [
+            'user_id' => $userId,
+            'charity_id' => $charityId,
+            'redirect_url' => $isSensitiveReauth ? ($_SESSION['reauth_redirect'] ?? null) : null,
+        ];
+        unset($_SESSION['reauth_redirect']);
+
+        // Redirect to login with reauth flag (this forces OAuth)
+        return $this->redirect($response, '/login?reauth=1');
     }
 }

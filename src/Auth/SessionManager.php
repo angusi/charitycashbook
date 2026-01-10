@@ -94,13 +94,18 @@ class SessionManager
     }
 
     /**
-     * Check if a charity session is still valid (not expired)
+     * Check if a charity session is still valid (not expired and has tracked identity)
      */
     public function checkCharitySession(Session $session, int $charityId, int $timeoutHours): bool
     {
         $charitySession = $session->getCharitySession($charityId);
-        
+
         if (!$charitySession) {
+            return false;
+        }
+
+        // Require identity to be tracked - forces re-auth for legacy sessions
+        if (empty($charitySession['authenticated_via_identity_id'])) {
             return false;
         }
 

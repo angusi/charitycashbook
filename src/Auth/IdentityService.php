@@ -252,8 +252,8 @@ class IdentityService
         $domain = '@' . substr($email, strpos($email, '@') + 1);
 
         $count = $this->db->queryValue(
-            "SELECT COUNT(*) 
-             FROM charity_allowed_emails 
+            "SELECT COUNT(*)
+             FROM charity_allowed_emails
              WHERE charity_id = ?
              AND (
                  (pattern_type = 'email' AND email_pattern = ?)
@@ -263,6 +263,26 @@ class IdentityService
         );
 
         return $count > 0;
+    }
+
+    /**
+     * Check if an OAuth identity is authorized for a specific charity
+     *
+     * Looks up the identity's email and checks against charity_allowed_emails.
+     */
+    public function isIdentityAuthorizedForCharity(int $identityId, int $charityId): bool
+    {
+        // Get the identity's email
+        $identity = $this->db->queryOne(
+            "SELECT oauth_email FROM user_identities WHERE id = ?",
+            [$identityId]
+        );
+
+        if (!$identity) {
+            return false;
+        }
+
+        return $this->isEmailAuthorisedForCharity($identity['oauth_email'], $charityId);
     }
 
     /**

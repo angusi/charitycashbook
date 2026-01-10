@@ -131,8 +131,9 @@ class CharityRepository
     public function getUsers(int $charityId): array
     {
         return $this->db->query(
-            "SELECT u.id, COALESCE(cu.display_name, u.display_name) as display_name, 
-                    u.primary_email, cu.role, cu.is_active, 
+            "SELECT u.id as user_id, COALESCE(cu.display_name, u.display_name) as display_name,
+                    COALESCE(cu.email, u.primary_email) as user_email,
+                    u.is_super_admin, cu.role, cu.is_active,
                     cu.last_authenticated_at, cu.created_at
              FROM users u
              JOIN charity_users cu ON cu.user_id = u.id
@@ -201,11 +202,25 @@ class CharityRepository
             );
         } else {
             $this->db->execute(
-                "UPDATE charity_users SET last_authenticated_at = NOW() 
+                "UPDATE charity_users SET last_authenticated_at = NOW()
                  WHERE charity_id = ? AND user_id = ?",
                 [$charityId, $userId]
             );
         }
+    }
+
+    /**
+     * Update user's OAuth identity and email for a specific charity
+     *
+     * Called when user authenticates for a charity, storing which OAuth identity
+     * they used and the email from that identity for display.
+     */
+    public function updateUserIdentity(int $charityId, int $userId, int $identityId, string $email): void
+    {
+        $this->db->execute(
+            "UPDATE charity_users SET identity_id = ?, email = ? WHERE charity_id = ? AND user_id = ?",
+            [$identityId, $email, $charityId, $userId]
+        );
     }
 
     /**

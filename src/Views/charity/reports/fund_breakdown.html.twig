@@ -145,6 +145,55 @@
             </table>
         </div>
 
+        <!-- Transfers Section -->
+        {% if report.grand_totals.transfers_in > 0 or report.grand_totals.transfers_out > 0 %}
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-blue-500 pb-2 mb-4">TRANSFERS</h3>
+            <table class="w-full min-w-max">
+                <tbody>
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4 min-w-[200px]">Transfers In</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2 min-w-[100px]">
+                            {% if report.fund_totals[fund.id].transfers_in > 0 %}
+                            £{{ report.fund_totals[fund.id].transfers_in|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4 min-w-[100px]">£{{ report.grand_totals.transfers_in|number_format(2) }}</td>
+                    </tr>
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4">Transfers Out</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2">
+                            {% if report.fund_totals[fund.id].transfers_out > 0 %}
+                            £{{ report.fund_totals[fund.id].transfers_out|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4">£{{ report.grand_totals.transfers_out|number_format(2) }}</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="bg-blue-50">
+                        <td class="py-2 text-sm font-bold text-gray-900 pr-4">Net Transfers</td>
+                        {% for fund in report.funds %}
+                        {% set net_transfer = report.fund_totals[fund.id].transfers_in - report.fund_totals[fund.id].transfers_out %}
+                        <td class="py-2 text-sm text-right font-bold px-2 {{ net_transfer >= 0 ? 'text-blue-700' : 'text-blue-700' }}">
+                            £{{ net_transfer|number_format(2) }}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-blue-700 pl-4">£{{ (report.grand_totals.transfers_in - report.grand_totals.transfers_out)|number_format(2) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endif %}
+
         <!-- Closing Balances -->
         <div class="bg-blue-50 rounded-lg p-4">
             <table class="w-full min-w-max">
@@ -161,12 +210,12 @@
                     <tr>
                         <td class="py-1 text-sm font-bold text-gray-900 pr-4">Net Movement</td>
                         {% for fund in report.funds %}
-                        {% set net = report.fund_totals[fund.id].receipts - report.fund_totals[fund.id].payments %}
+                        {% set net = report.fund_totals[fund.id].receipts - report.fund_totals[fund.id].payments + report.fund_totals[fund.id].transfers_in - report.fund_totals[fund.id].transfers_out %}
                         <td class="py-1 text-sm text-right font-bold px-2 {{ net >= 0 ? 'text-green-700' : 'text-red-700' }}">
                             £{{ net|number_format(2) }}
                         </td>
                         {% endfor %}
-                        {% set total_net = report.grand_totals.receipts - report.grand_totals.payments %}
+                        {% set total_net = report.grand_totals.receipts - report.grand_totals.payments + report.grand_totals.transfers_in - report.grand_totals.transfers_out %}
                         <td class="py-1 text-sm text-right font-bold pl-4 {{ total_net >= 0 ? 'text-green-700' : 'text-red-700' }}">
                             £{{ total_net|number_format(2) }}
                         </td>

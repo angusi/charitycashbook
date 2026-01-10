@@ -56,6 +56,7 @@
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Opening</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Receipts</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Payments</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Transfers</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
                 <th class="px-6 py-3"></th>
             </tr>
@@ -63,7 +64,7 @@
         <tbody class="bg-white divide-y divide-gray-200">
             {% if funds is empty %}
                 <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                         No funds configured. Create a fund to start recording transactions.
                     </td>
                 </tr>
@@ -88,6 +89,14 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">
                             £{{ fund.payments|number_format(2) }}
                         </td>
+                        {% set net_transfers = fund.transfers_in - fund.transfers_out %}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right {{ net_transfers >= 0 ? 'text-blue-600' : 'text-blue-600' }}">
+                            {% if net_transfers != 0 %}
+                                {{ net_transfers >= 0 ? '+' : '' }}£{{ net_transfers|number_format(2) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {{ fund.balance >= 0 ? 'text-green-600' : 'text-red-600' }}">
                             £{{ fund.balance|number_format(2) }}
                         </td>
@@ -106,6 +115,7 @@
                     <td colspan="3" class="px-6 py-3 text-sm font-medium text-gray-900">Totals</td>
                     <td class="px-6 py-3 text-sm text-right font-medium text-green-600">£{{ total_receipts|number_format(2) }}</td>
                     <td class="px-6 py-3 text-sm text-right font-medium text-red-600">£{{ total_payments|number_format(2) }}</td>
+                    <td class="px-6 py-3 text-sm text-right font-medium text-blue-600">£0.00</td>
                     <td class="px-6 py-3 text-sm text-right font-bold {{ total_balance >= 0 ? 'text-green-600' : 'text-red-600' }}">£{{ total_balance|number_format(2) }}</td>
                     <td></td>
                 </tr>

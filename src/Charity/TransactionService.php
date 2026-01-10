@@ -334,32 +334,47 @@ class TransactionService
      */
     public function create(int $charityId, int $userId, array $data): int
     {
-        // Normalize category entries first to determine transaction type
+        // Determine transaction type
+        $transactionType = $data['transaction_type'] ?? null;
+
+        // Normalize category entries first (even for transfers, to detect if they were provided)
         $categoryEntries = $this->normalizeCategoryEntries($data, $charityId);
 
-        // Validate all categories are same type and get transaction type
-        $transactionType = $this->validateCategoryEntries($categoryEntries, $charityId);
+        // If not explicitly set, determine from categories
+        if (!$transactionType || !in_array($transactionType, ['receipt', 'payment', 'transfer'])) {
+            $transactionType = $this->validateCategoryEntries($categoryEntries, $charityId);
+        } else {
+            // Validate categories for non-transfers
+            if ($transactionType !== 'transfer' && !empty($categoryEntries)) {
+                $this->validateCategoryEntries($categoryEntries, $charityId);
+            }
+        }
 
         $this->validate($data, $charityId);
 
-        // Determine Gift Aid status from first category
-        $firstCategory = $this->categoryService->getOperationalCategory(
-            $categoryEntries[0]['operational_category_id'],
-            $charityId
-        );
-        $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+        // Gift Aid only applies to receipts with categories
+        $giftaidStatus = 'not_applicable';
+        if ($transactionType === 'receipt' && !empty($categoryEntries)) {
+            $firstCategory = $this->categoryService->getOperationalCategory(
+                $categoryEntries[0]['operational_category_id'],
+                $charityId
+            );
+            $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+        }
 
         // Normalize fund entries
         $fundEntries = $this->normalizeFundEntries($data, $transactionType);
 
-        // Normalize cashbook entries
+        // Normalize cashbook entries (even for transfers, to detect if they were provided)
         $cashbookEntries = $this->normalizeCashbookEntries($data, $transactionType);
 
-        // Apply sign to category entries
-        foreach ($categoryEntries as &$entry) {
-            $entry['amount'] = $transactionType === 'receipt' ? abs($entry['amount']) : -abs($entry['amount']);
+        // Apply sign to category entries (not applicable for transfers)
+        if ($transactionType !== 'transfer') {
+            foreach ($categoryEntries as &$entry) {
+                $entry['amount'] = $transactionType === 'receipt' ? abs($entry['amount']) : -abs($entry['amount']);
+            }
+            unset($entry);
         }
-        unset($entry);
 
         // Validate entries
         $this->validateEntries($fundEntries, $categoryEntries, $cashbookEntries, (float) $data['amount'], $transactionType);
@@ -372,7 +387,7 @@ class TransactionService
             $primaryCategoryId = $categoryEntries[0]['operational_category_id'] ?? null;
             $primaryCashbookId = $cashbookEntries[0]['cash_book_id'] ?? null;
 
-            $id = $this->db->insert('transactions', [
+            $insertData = [
                 'charity_id' => $charityId,
                 'transaction_date' => $data['transaction_date'],
                 'transaction_type' => $transactionType,
@@ -381,12 +396,22 @@ class TransactionService
                 'reference' => $data['reference'] ?? null,
                 'fund_id' => $primaryFundId, // Legacy column
                 'operational_category_id' => $primaryCategoryId, // Legacy column (now uses entries table)
-                'donor_id' => $data['donor_id'] ?? null,
-                'has_oneoff_declaration' => $data['has_oneoff_declaration'] ?? false,
-                'giftaid_status' => $giftaidStatus,
                 'cash_book_id' => $primaryCashbookId, // Legacy column
                 'created_by_user_id' => $userId,
-            ]);
+            ];
+
+            // Only set donor/giftaid fields for receipts/payments
+            if ($transactionType !== 'transfer') {
+                $insertData['donor_id'] = $data['donor_id'] ?? null;
+                $insertData['has_oneoff_declaration'] = $data['has_oneoff_declaration'] ?? false;
+                $insertData['giftaid_status'] = $giftaidStatus;
+            } else {
+                $insertData['donor_id'] = null;
+                $insertData['has_oneoff_declaration'] = false;
+                $insertData['giftaid_status'] = 'not_applicable';
+            }
+
+            $id = $this->db->insert('transactions', $insertData);
 
             // Insert fund entries
             foreach ($fundEntries as $entry) {
@@ -452,30 +477,46 @@ class TransactionService
             throw new ValidationException(['giftaid' => 'Cannot edit a claimed transaction']);
         }
 
-        // Normalize category entries first to determine transaction type
+        // Determine transaction type
+        $transactionType = $data['transaction_type'] ?? null;
+
+        // Normalize category entries first (even for transfers, to detect if they were provided)
         $categoryEntries = $this->normalizeCategoryEntries($data, $charityId);
 
-        // Validate all categories are same type and get transaction type
-        $transactionType = $this->validateCategoryEntries($categoryEntries, $charityId);
+        // If not explicitly set, determine from categories
+        if (!$transactionType || !in_array($transactionType, ['receipt', 'payment', 'transfer'])) {
+            $transactionType = $this->validateCategoryEntries($categoryEntries, $charityId);
+        } else {
+            // Validate categories for non-transfers
+            if ($transactionType !== 'transfer' && !empty($categoryEntries)) {
+                $this->validateCategoryEntries($categoryEntries, $charityId);
+            }
+        }
 
         $this->validate($data, $charityId);
 
-        // Determine Gift Aid status from first category
-        $firstCategory = $this->categoryService->getOperationalCategory(
-            $categoryEntries[0]['operational_category_id'],
-            $charityId
-        );
-        $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+        // Gift Aid only applies to receipts with categories
+        $giftaidStatus = 'not_applicable';
+        if ($transactionType === 'receipt' && !empty($categoryEntries)) {
+            $firstCategory = $this->categoryService->getOperationalCategory(
+                $categoryEntries[0]['operational_category_id'],
+                $charityId
+            );
+            $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+        }
 
         // Normalize entries
         $fundEntries = $this->normalizeFundEntries($data, $transactionType);
+        // Normalize cashbook entries (even for transfers, to detect if they were provided)
         $cashbookEntries = $this->normalizeCashbookEntries($data, $transactionType);
 
-        // Apply sign to category entries
-        foreach ($categoryEntries as &$entry) {
-            $entry['amount'] = $transactionType === 'receipt' ? abs($entry['amount']) : -abs($entry['amount']);
+        // Apply sign to category entries (not applicable for transfers)
+        if ($transactionType !== 'transfer') {
+            foreach ($categoryEntries as &$entry) {
+                $entry['amount'] = $transactionType === 'receipt' ? abs($entry['amount']) : -abs($entry['amount']);
+            }
+            unset($entry);
         }
-        unset($entry);
 
         // Validate entries
         $this->validateEntries($fundEntries, $categoryEntries, $cashbookEntries, (float) $data['amount'], $transactionType);
@@ -491,7 +532,7 @@ class TransactionService
             $primaryCategoryId = $categoryEntries[0]['operational_category_id'] ?? null;
             $primaryCashbookId = $cashbookEntries[0]['cash_book_id'] ?? null;
 
-            $this->db->update('transactions', [
+            $updateData = [
                 'transaction_date' => $data['transaction_date'],
                 'transaction_type' => $transactionType,
                 'amount' => $data['amount'],
@@ -499,12 +540,22 @@ class TransactionService
                 'reference' => $data['reference'] ?? null,
                 'fund_id' => $primaryFundId, // Legacy column
                 'operational_category_id' => $primaryCategoryId, // Legacy column
-                'donor_id' => $data['donor_id'] ?? null,
-                'has_oneoff_declaration' => $data['has_oneoff_declaration'] ?? false,
-                'giftaid_status' => $giftaidStatus,
                 'cash_book_id' => $primaryCashbookId, // Legacy column
                 'updated_by_user_id' => $userId,
-            ], 'id = ? AND charity_id = ?', [$id, $charityId]);
+            ];
+
+            // Only set donor/giftaid fields for receipts/payments
+            if ($transactionType !== 'transfer') {
+                $updateData['donor_id'] = $data['donor_id'] ?? null;
+                $updateData['has_oneoff_declaration'] = $data['has_oneoff_declaration'] ?? false;
+                $updateData['giftaid_status'] = $giftaidStatus;
+            } else {
+                $updateData['donor_id'] = null;
+                $updateData['has_oneoff_declaration'] = false;
+                $updateData['giftaid_status'] = 'not_applicable';
+            }
+
+            $this->db->update('transactions', $updateData, 'id = ? AND charity_id = ?', [$id, $charityId]);
 
             // Replace fund entries
             $this->db->execute("DELETE FROM transaction_fund_entries WHERE transaction_id = ?", [$id]);
@@ -582,8 +633,15 @@ class TransactionService
             foreach ($data['fund_entries'] as $entry) {
                 if (!empty($entry['fund_id']) && isset($entry['amount'])) {
                     $amount = (float) $entry['amount'];
-                    // Convert to signed amount based on transaction type
-                    $signedAmount = $transactionType === 'receipt' ? $amount : -$amount;
+
+                    // For transfers, amounts are already signed (positive/negative)
+                    // For receipts/payments, convert to signed amount based on transaction type
+                    if ($transactionType === 'transfer') {
+                        $signedAmount = $amount;
+                    } else {
+                        $signedAmount = $transactionType === 'receipt' ? abs($amount) : -abs($amount);
+                    }
+
                     $entries[] = [
                         'fund_id' => (int) $entry['fund_id'],
                         'amount' => $signedAmount,
@@ -593,12 +651,12 @@ class TransactionService
             return $entries;
         }
 
-        // Simple mode: single fund_id
-        if (!empty($data['fund_id'])) {
+        // Simple mode: single fund_id (not applicable for transfers)
+        if (!empty($data['fund_id']) && $transactionType !== 'transfer') {
             $amount = (float) $data['amount'];
             // Convert to signed amount based on transaction type
             $signedAmount = $transactionType === 'receipt' ? $amount : -$amount;
-            
+
             return [[
                 'fund_id' => (int) $data['fund_id'],
                 'amount' => $signedAmount,
@@ -738,42 +796,71 @@ class TransactionService
             $errors['fund_entries'] = 'At least one fund must be specified';
         }
 
-        // Must have at least one category entry
-        if (empty($categoryEntries)) {
-            $errors['category_entries'] = 'At least one category must be specified';
-        }
+        // Transfers have special validation rules
+        if ($transactionType === 'transfer') {
+            // Transfers must have at least 2 fund entries (source and destination)
+            if (count($fundEntries) < 2) {
+                $errors['fund_entries'] = 'Transfers must have at least 2 funds (source and destination)';
+            } else {
+                // Only check balance if we have at least 2 funds
+                // Fund entries must sum to zero for transfers
+                $fundSum = array_sum(array_column($fundEntries, 'amount'));
+                if (abs($fundSum) > 0.01) {
+                    $errors['fund_entries'] = sprintf(
+                        'Transfer fund entries must balance to zero (currently £%.2f)',
+                        abs($fundSum)
+                    );
+                }
+            }
 
-        // Fund entries must sum to transaction amount (with correct sign)
-        $fundSum = array_sum(array_column($fundEntries, 'amount'));
-        $expectedSum = $transactionType === 'receipt' ? $amount : -$amount;
+            // Transfers should not have categories
+            if (!empty($categoryEntries)) {
+                $errors['category_entries'] = 'Transfers should not have categories';
+            }
 
-        if (abs($fundSum - $expectedSum) > 0.01) {
-            $errors['fund_entries'] = sprintf(
-                'Fund entries must sum to £%.2f (currently £%.2f)',
-                abs($expectedSum),
-                abs($fundSum)
-            );
-        }
+            // Transfers should not have cashbook entries
+            if (!empty($cashbookEntries)) {
+                $errors['cashbook_entries'] = 'Transfers should not have cashbook entries';
+            }
+        } else {
+            // Regular receipts/payments validation
+            // Must have at least one category entry
+            if (empty($categoryEntries)) {
+                $errors['category_entries'] = 'At least one category must be specified';
+            }
 
-        // Category entries must sum to transaction amount (with correct sign)
-        $categorySum = array_sum(array_column($categoryEntries, 'amount'));
-        if (abs($categorySum - $expectedSum) > 0.01) {
-            $errors['category_entries'] = sprintf(
-                'Category entries must sum to £%.2f (currently £%.2f)',
-                abs($expectedSum),
-                abs($categorySum)
-            );
-        }
+            // Fund entries must sum to transaction amount (with correct sign)
+            $fundSum = array_sum(array_column($fundEntries, 'amount'));
+            $expectedSum = $transactionType === 'receipt' ? $amount : -$amount;
 
-        // If cashbook entries exist, they must sum to the same as fund entries
-        if (!empty($cashbookEntries)) {
-            $cashbookSum = array_sum(array_column($cashbookEntries, 'amount'));
-            if (abs($cashbookSum - $fundSum) > 0.01) {
-                $errors['cashbook_entries'] = sprintf(
-                    'Cashbook entries must sum to £%.2f (currently £%.2f)',
-                    abs($fundSum),
-                    abs($cashbookSum)
+            if (abs($fundSum - $expectedSum) > 0.01) {
+                $errors['fund_entries'] = sprintf(
+                    'Fund entries must sum to £%.2f (currently £%.2f)',
+                    abs($expectedSum),
+                    abs($fundSum)
                 );
+            }
+
+            // Category entries must sum to transaction amount (with correct sign)
+            $categorySum = array_sum(array_column($categoryEntries, 'amount'));
+            if (abs($categorySum - $expectedSum) > 0.01) {
+                $errors['category_entries'] = sprintf(
+                    'Category entries must sum to £%.2f (currently £%.2f)',
+                    abs($expectedSum),
+                    abs($categorySum)
+                );
+            }
+
+            // If cashbook entries exist, they must sum to the same as fund entries
+            if (!empty($cashbookEntries)) {
+                $cashbookSum = array_sum(array_column($cashbookEntries, 'amount'));
+                if (abs($cashbookSum - $fundSum) > 0.01) {
+                    $errors['cashbook_entries'] = sprintf(
+                        'Cashbook entries must sum to £%.2f (currently £%.2f)',
+                        abs($fundSum),
+                        abs($cashbookSum)
+                    );
+                }
             }
         }
 
@@ -846,9 +933,12 @@ class TransactionService
             $errors['fund_id'] = 'Fund is required';
         }
 
-        // Category is required - either as operational_category_id (simple mode) or category_entries (split mode)
-        if (empty($data['operational_category_id']) && empty($data['category_entries'])) {
-            $errors['operational_category_id'] = 'Category is required';
+        // Category is required for receipts and payments (not for transfers)
+        $transactionType = $data['transaction_type'] ?? null;
+        if ($transactionType !== 'transfer') {
+            if (empty($data['operational_category_id']) && empty($data['category_entries'])) {
+                $errors['operational_category_id'] = 'Category is required';
+            }
         }
 
         if (!empty($errors)) {

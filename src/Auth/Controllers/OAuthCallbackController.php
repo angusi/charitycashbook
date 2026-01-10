@@ -103,13 +103,16 @@ class OAuthCallbackController extends BaseController
                 }
 
                 $this->flash('success', 'Welcome back, ' . $result['user']['display_name']);
-                
+
                 // Check for re-auth redirects (charity or service admin)
-                // Pass OAuth display name to sync per-charity display name
+                // Pass OAuth identity info for per-charity validation
                 $redirectUrl = $this->getReauthRedirect(
                     $result['user'],
                     $sessionManager,
                     $newSession ? $newSession->getId() : 0,
+                    $providerId,
+                    $oauthSubject,
+                    $oauthEmail,
                     $displayName
                 );
                 return $this->redirect($response, $redirectUrl);
@@ -303,22 +306,32 @@ class OAuthCallbackController extends BaseController
 
     /**
      * Get the redirect URL after re-authentication
-     * 
+     *
      * Handles both service admin and charity re-auth flows.
      * Validates that the same user who initiated the reauth completes it,
      * preventing session fixation attacks on shared computers.
-     * 
+     *
      * @param array $user The authenticated user
      * @param SessionManager $sessionManager
      * @param int $sessionId
+     * @param int $providerId OAuth provider ID
+     * @param string $oauthSubject OAuth subject identifier
+     * @param string $oauthEmail OAuth email
      * @param string|null $oauthDisplayName Display name from OAuth provider to sync
      */
-    private function getReauthRedirect(array $user, SessionManager $sessionManager, int $sessionId, ?string $oauthDisplayName = null): string
-    {
+    private function getReauthRedirect(
+        array $user,
+        SessionManager $sessionManager,
+        int $sessionId,
+        int $providerId,
+        string $oauthSubject,
+        string $oauthEmail,
+        ?string $oauthDisplayName = null
+    ): string {
         // Check if this was initiated as a reauth flow
         $isReauthFlow = $_SESSION['oauth_is_reauth'] ?? false;
         unset($_SESSION['oauth_is_reauth']);
-        
+
         // If not a reauth flow, clear any stale reauth data and go to charities
         if (!$isReauthFlow) {
             unset($_SESSION['charity_reauth']);
@@ -327,11 +340,11 @@ class OAuthCallbackController extends BaseController
             unset($_SESSION['reauth_redirect']);
             return '/charities';
         }
-        
+
         // Check for charity re-auth context first
         $charityReauth = $_SESSION['charity_reauth'] ?? null;
         unset($_SESSION['charity_reauth']);
-        
+
         if ($charityReauth) {
             // Security: verify this is the same user who initiated the reauth
             $originalUserId = $charityReauth['user_id'] ?? null;
@@ -339,31 +352,51 @@ class OAuthCallbackController extends BaseController
                 // Different user - ignore the reauth context (possible session fixation attempt)
                 return '/charities';
             }
-            
+
             $charityId = $charityReauth['charity_id'];
             $redirectUrl = $charityReauth['redirect_url'];
-            
-            // Refresh the charity session with fresh authentication time
+
             $charityRepo = $this->get(\CharityCashbook\Charity\CharityRepository::class);
             $charity = $charityRepo->findById($charityId);
             $membership = $charityRepo->getUserMembership($charityId, $user['id']);
-            
+
             if ($charity && $membership) {
+                // Get the identity ID for this OAuth account
+                $identityService = $this->get(IdentityService::class);
+                $identity = $identityService->findIdentity($providerId, $oauthSubject);
+
+                if (!$identity) {
+                    // Identity not found - shouldn't happen but handle gracefully
+                    $this->flash('error', 'Authentication error. Please try again.');
+                    return '/charities';
+                }
+
+                // Verify this identity's email is authorized for this charity
+                if (!$identityService->isIdentityAuthorizedForCharity($identity['id'], $charityId)) {
+                    $this->flash('error', 'The account ' . $oauthEmail . ' is not authorized for ' . $charity['name'] . '. Please sign in with an authorized account.');
+                    return '/charities';
+                }
+
+                // Store identity and email in charity_users
+                $charityRepo->updateUserIdentity($charityId, $user['id'], $identity['id'], $oauthEmail);
+
+                // Refresh the charity session with the identity ID
                 $sessionManager->refreshCharitySession(
                     $sessionId,
                     $charityId,
                     $membership['role'],
-                    0, // identity ID
+                    $identity['id'],
                     $charity['session_timeout_hours']
                 );
+
                 // Sync display name from OAuth provider on reauth
                 $charityRepo->updateLastAuthenticated($charityId, $user['id'], $oauthDisplayName);
-                
+
                 // Validate redirect URL is within this charity
                 if ($redirectUrl && str_starts_with($redirectUrl, '/charity/' . $charityId)) {
                     return $redirectUrl;
                 }
-                
+
                 return '/charity/' . $charityId;
             }
         }
