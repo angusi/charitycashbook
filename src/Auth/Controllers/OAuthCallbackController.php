@@ -37,15 +37,37 @@ class OAuthCallbackController extends BaseController
             return $this->redirect($response, $isLinking ? '/account' : '/login');
         }
 
-        // Check for error from OAuth provider
+        // Determine redirect for errors - if user has a valid session, go to charities not login
+        $sessionManager = $this->get(SessionManager::class);
+        $existingSession = $sessionManager->validate();
+        $errorRedirect = $isLinking ? '/account' : ($existingSession ? '/charities' : '/login');
+
+        // Check for error from OAuth provider (including user clicking Cancel)
         if (isset($params['error'])) {
-            $this->flash('error', 'Authentication failed: ' . ($params['error_description'] ?? $params['error']));
-            return $this->redirect($response, $isLinking ? '/account' : '/login');
+            // Clear any pending reauth context so user isn't immediately redirected back
+            unset($_SESSION['charity_reauth']);
+            unset($_SESSION['service_admin_reauth']);
+            unset($_SESSION['pending_sensitive_action']);
+            unset($_SESSION['oauth_is_reauth']);
+
+            // Don't show scary error for user-initiated cancel
+            if ($params['error'] === 'access_denied') {
+                $this->flash('info', 'Authentication cancelled.');
+            } else {
+                $this->flash('error', 'Authentication failed: ' . ($params['error_description'] ?? $params['error']));
+            }
+            return $this->redirect($response, $errorRedirect);
         }
 
         if (!isset($params['code'])) {
+            // Clear any pending reauth context
+            unset($_SESSION['charity_reauth']);
+            unset($_SESSION['service_admin_reauth']);
+            unset($_SESSION['pending_sensitive_action']);
+            unset($_SESSION['oauth_is_reauth']);
+
             $this->flash('error', 'No authorization code received');
-            return $this->redirect($response, $isLinking ? '/account' : '/login');
+            return $this->redirect($response, $errorRedirect);
         }
 
         try {
@@ -80,12 +102,18 @@ class OAuthCallbackController extends BaseController
             $auditService = $this->get(AuditService::class);
 
             if ($result['status'] === 'existing_user') {
-                // Existing user - create session
                 $sessionManager = $this->get(SessionManager::class);
-                $sessionManager->create($result['user']['id']);
-                
-                // Get the newly created session for reauth handling
-                $newSession = $sessionManager->validate();
+
+                // Check if this is a reauth flow with an existing session
+                $existingSession = $sessionManager->validate();
+                if ($existingSession && $existingSession->getUserId() === $result['user']['id']) {
+                    // Reauth flow - use existing session to preserve charity sessions
+                    $sessionId = $existingSession->getId();
+                } else {
+                    // Fresh login - create new session
+                    $newSession = $sessionManager->create($result['user']['id']);
+                    $sessionId = $newSession['id'];
+                }
 
                 $auditService->logLogin($result['user']['id'], $providerId, $oauthEmail, true);
 
@@ -93,6 +121,20 @@ class OAuthCallbackController extends BaseController
                 // Preserve reauth data across regeneration
                 if (session_status() === PHP_SESSION_ACTIVE) {
                     session_regenerate_id(true);
+                }
+
+                // Store the just-authenticated identity for use when entering charities
+                // This allows skipping redundant OAuth when user just logged in
+                $identity = $identityService->findIdentity($providerId, $oauthSubject);
+                if ($identity) {
+                    $_SESSION['recent_oauth_identity'] = [
+                        'identity_id' => $identity['id'],
+                        'provider_id' => $providerId,
+                        'oauth_subject' => $oauthSubject,
+                        'oauth_email' => $oauthEmail,
+                        'display_name' => $displayName,
+                        'authenticated_at' => time(),
+                    ];
                 }
 
                 // Check if this login is to complete a "link new identity" flow
@@ -109,7 +151,7 @@ class OAuthCallbackController extends BaseController
                 $redirectUrl = $this->getReauthRedirect(
                     $result['user'],
                     $sessionManager,
-                    $newSession ? $newSession->getId() : 0,
+                    $sessionId,
                     $providerId,
                     $oauthSubject,
                     $oauthEmail,
@@ -142,7 +184,7 @@ class OAuthCallbackController extends BaseController
             $auditService->logLogin(null, $providerId, $oauthEmail ?? 'unknown', false, $e->getMessage());
 
             $this->flash('error', 'Authentication failed: ' . $e->getMessage());
-            return $this->redirect($response, $isLinking ? '/account' : '/login');
+            return $this->redirect($response, $errorRedirect);
         }
     }
 

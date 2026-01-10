@@ -67,6 +67,10 @@ class LoginControllerTest extends TestCase
             ->with(1)
             ->willReturn($mockProvider);
 
+        $this->providerService->method('getProviderById')
+            ->with(1)
+            ->willReturn(['id' => 1, 'provider_type' => 'google', 'name' => 'Google']);
+
         $this->providerService->method('generateState')
             ->willReturn('abc123');
 

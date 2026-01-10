@@ -21,7 +21,14 @@ class CharitySelectionController extends BaseController
     {
         $userId = $request->getAttribute('user_id');
         $session = $request->getAttribute('session');
-        
+
+        // Clear any pending reauth context - user is back at charity selection
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        unset($_SESSION['charity_reauth']);
+        unset($_SESSION['oauth_is_reauth']);
+
         $identityService = $this->get(IdentityService::class);
         $charities = $identityService->getUserCharities($userId);
         $suspendedCharities = $identityService->getUserSuspendedCharities($userId);
@@ -79,12 +86,54 @@ class CharitySelectionController extends BaseController
             // Session is valid and not a sensitive action reauth request, enter charity
             return $this->redirect($response, '/charity/' . $charityId);
         }
-        
-        // No valid session OR sensitive reauth - require OAuth authentication
+
         if (session_status() !== PHP_SESSION_ACTIVE) {
             session_start();
         }
 
+        // Check if user just logged in with an identity that authorizes this charity
+        // This avoids requiring a second OAuth when user just authenticated
+        if (!$isSensitiveReauth) {
+            $recentIdentity = $_SESSION['recent_oauth_identity'] ?? null;
+
+            if ($recentIdentity) {
+                // Only use if authenticated within the last 5 minutes
+                $identityAge = time() - ($recentIdentity['authenticated_at'] ?? 0);
+                if ($identityAge < 300) {
+                    $identityService = $this->get(IdentityService::class);
+
+                    // Check if this identity authorizes the charity
+                    if ($identityService->isIdentityAuthorizedForCharity($recentIdentity['identity_id'], $charityId)) {
+                        // Great! Use this identity to establish the charity session
+                        $charityRepo->updateUserIdentity(
+                            $charityId,
+                            $userId,
+                            $recentIdentity['identity_id'],
+                            $recentIdentity['oauth_email']
+                        );
+
+                        $sessionManager->refreshCharitySession(
+                            $session->getId(),
+                            $charityId,
+                            $membership['role'],
+                            $recentIdentity['identity_id'],
+                            $charity['session_timeout_hours']
+                        );
+
+                        // Update last authenticated timestamp and sync display name
+                        $charityRepo->updateLastAuthenticated(
+                            $charityId,
+                            $userId,
+                            $recentIdentity['display_name'] ?? null
+                        );
+
+                        return $this->redirect($response, '/charity/' . $charityId);
+                    }
+                }
+            }
+        }
+
+        // No valid session and no recent authorized identity - require OAuth authentication
         // Store charity context for post-OAuth processing
         // Include user_id to verify same user completes the reauth
         $_SESSION['charity_reauth'] = [

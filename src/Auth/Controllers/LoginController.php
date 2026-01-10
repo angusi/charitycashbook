@@ -53,23 +53,20 @@ class LoginController extends BaseController
                     'description' => $this->getActionDescription($pendingAction['action'] ?? ''),
                 ];
             } elseif (isset($_SESSION['charity_reauth'])) {
-                $charityId = $_SESSION['charity_reauth']['charity_id'] ?? null;
                 $reauthContext = [
                     'type' => 'charity',
-                    'cancel_url' => $charityId ? '/charity/' . $charityId : '/charities',
-                    'description' => 'perform this action',
+                    'cancel_url' => '/charities',
+                    'description' => 'access this charity',
                 ];
             }
         }
         
-        // For reauth requests, destroy the existing session to force fresh OAuth
-        if ($isReauth && $session) {
-            $sessionManager->destroy();
-            $session = null;
-        }
-        
-        // If logged in (and not reauth), redirect to charities
-        if ($session) {
+        // For reauth requests, DON'T destroy the session - we want to keep existing
+        // charity sessions intact. The user just needs to prove their identity via OAuth.
+        // Only a full logout should destroy the session.
+
+        // If logged in and not a reauth request, redirect to charities
+        if ($session && !$isReauth) {
             return $this->redirect($response, '/charities');
         }
 
@@ -89,25 +86,39 @@ class LoginController extends BaseController
     public function redirectToProvider(Request $request, Response $response, array $args): Response
     {
         $providerId = (int) $args['provider'];
-        
+
         $providerService = $this->get(OAuthProviderService::class);
-        
+
         try {
             $provider = $providerService->getProviderInstance($providerId);
+            $providerInfo = $providerService->getProviderById($providerId);
             $state = $providerService->generateState();
-            
+
             // Store provider ID in session for callback
             if (session_status() !== PHP_SESSION_ACTIVE) {
                 session_start();
             }
             $_SESSION['oauth_provider_id'] = $providerId;
-            
+
             // The oauth_is_reauth flag should have been set by the login page
             // if the user arrived via /login?reauth=1. If not set, this is a normal login.
             // Don't check for pending_sensitive_action here as it may be stale from a cancelled action.
-            
-            $authUrl = $provider->getAuthorizationUrl(['state' => $state]);
-            
+
+            // Build authorization URL options
+            $authOptions = ['state' => $state];
+
+            // Force account picker so users can switch between accounts
+            // This is essential for multi-charity users who need different Google/Microsoft accounts
+            if ($providerInfo) {
+                $authOptions['prompt'] = match ($providerInfo['provider_type']) {
+                    'google' => 'select_account',
+                    'microsoft' => 'select_account',
+                    default => 'login',  // Generic OIDC - try 'login' prompt
+                };
+            }
+
+            $authUrl = $provider->getAuthorizationUrl($authOptions);
+
             return $response
                 ->withHeader('Location', $authUrl)
                 ->withStatus(302);

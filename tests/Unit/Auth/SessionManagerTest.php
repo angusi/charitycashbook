@@ -64,10 +64,15 @@ class SessionManagerTest extends TestCase
         $this->db->method('queryOne')->willReturn(['display_name' => 'Test', 'is_super_admin' => false]);
         $this->db->method('insert')->willReturn(1);
 
-        $token = $this->sessionManager->create(1);
+        $result = $this->sessionManager->create(1);
 
+        // create() returns array with token and id
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('token', $result);
+        $this->assertArrayHasKey('id', $result);
         // Base64 encoded 64 bytes = ~88 characters
-        $this->assertGreaterThan(80, strlen($token));
+        $this->assertGreaterThan(80, strlen($result['token']));
+        $this->assertEquals(1, $result['id']);
     }
 
     // ========================================
@@ -164,7 +169,10 @@ class SessionManagerTest extends TestCase
             'id' => 1,
             'user_id' => 1,
             'charity_sessions' => json_encode([
-                '42' => ['authenticated_at' => time() - 3600], // 1 hour ago
+                '42' => [
+                    'authenticated_at' => time() - 3600, // 1 hour ago
+                    'authenticated_via_identity_id' => 5,
+                ],
             ]),
         ]);
 
@@ -179,7 +187,30 @@ class SessionManagerTest extends TestCase
             'id' => 1,
             'user_id' => 1,
             'charity_sessions' => json_encode([
-                '42' => ['authenticated_at' => time() - 90000], // 25 hours ago
+                '42' => [
+                    'authenticated_at' => time() - 90000, // 25 hours ago
+                    'authenticated_via_identity_id' => 5,
+                ],
+            ]),
+        ]);
+
+        $result = $this->sessionManager->checkCharitySession($session, 42, 24); // 24 hour timeout
+
+        $this->assertFalse($result);
+    }
+
+    public function testCheckCharitySessionReturnsFalseWhenNoIdentityTracked(): void
+    {
+        // Session without authenticated_via_identity_id should be considered invalid
+        // This forces re-auth for legacy sessions that don't track which identity was used
+        $session = new Session([
+            'id' => 1,
+            'user_id' => 1,
+            'charity_sessions' => json_encode([
+                '42' => [
+                    'authenticated_at' => time() - 3600, // 1 hour ago, not expired
+                    // Note: no authenticated_via_identity_id
+                ],
             ]),
         ]);
 

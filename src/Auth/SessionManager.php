@@ -28,8 +28,10 @@ class SessionManager
 
     /**
      * Create a new session for a user
+     *
+     * @return array{token: string, id: int} The session token and database ID
      */
-    public function create(int $userId): string
+    public function create(int $userId): array
     {
         // Generate cryptographically secure token
         $token = base64_encode(random_bytes(self::TOKEN_LENGTH));
@@ -42,7 +44,7 @@ class SessionManager
         );
 
         // Store session in database
-        $this->db->insert('sessions', [
+        $sessionId = $this->db->insert('sessions', [
             'token_hash' => $tokenHash,
             'user_id' => $userId,
             'charity_sessions' => '{}',
@@ -56,7 +58,7 @@ class SessionManager
 
         $this->logger->auth('Session created', ['user_id' => $userId]);
 
-        return $token;
+        return ['token' => $token, 'id' => $sessionId];
     }
 
     /**
