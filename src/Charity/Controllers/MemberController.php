@@ -1035,11 +1035,47 @@ class MemberController extends BaseController
             ]);
             
             $this->flash('success', 'Membership type updated.');
-            
+
         } catch (ValidationException $e) {
             $this->flash('error', implode(', ', $e->getErrors()));
         }
-        
+
         return $this->redirect($response, "/charity/$charityId/members/types");
+    }
+
+    /**
+     * Delete a member (only if no trustee roles)
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = (int) $request->getAttribute('user_id');
+        $memberId = (int) $args['id'];
+
+        $memberService = $this->get(MemberService::class);
+        $auditService = $this->get(AuditService::class);
+
+        $member = $memberService->getById($memberId);
+        if (!$member || $member['charity_id'] !== $charityId) {
+            $this->flash('error', 'Member not found.');
+            return $this->redirect($response, "/charity/$charityId/members");
+        }
+
+        // Check for trustee roles
+        $trusteeHistory = $memberService->getTrusteeHistory($memberId);
+        if (!empty($trusteeHistory)) {
+            $this->flash('error', 'Cannot delete member with trustee role history. Use Privacy Delete to anonymize instead.');
+            return $this->redirect($response, "/charity/$charityId/members/$memberId");
+        }
+
+        // Delete the member
+        $memberService->delete($memberId, $charityId);
+
+        $auditService->log($charityId, $userId, 'member_deleted', 'members', $memberId, [
+            'name' => $member['name'],
+        ]);
+
+        $this->flash('success', 'Member deleted successfully.');
+        return $this->redirect($response, "/charity/$charityId/members");
     }
 }

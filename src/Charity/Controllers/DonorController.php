@@ -383,6 +383,42 @@ class DonorController extends BaseController
     }
 
     /**
+     * Delete a donor (only if no donations)
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = (int) $request->getAttribute('user_id');
+        $donorId = (int) $args['id'];
+
+        $donorService = $this->get(DonorService::class);
+        $auditService = $this->get(AuditService::class);
+
+        $donor = $donorService->get($donorId, $charityId);
+        if (!$donor) {
+            $this->flash('error', 'Donor not found.');
+            return $this->redirect($response, "/charity/$charityId/donors");
+        }
+
+        // Check for donations
+        $donations = $donorService->getDonations($donorId, $charityId);
+        if (!empty($donations)) {
+            $this->flash('error', 'Cannot delete donor with existing donations. Use Privacy Delete to anonymize instead.');
+            return $this->redirect($response, "/charity/$charityId/donors/$donorId");
+        }
+
+        // Delete the donor
+        $donorService->delete($donorId, $charityId);
+
+        $auditService->log($charityId, $userId, 'donor_deleted', 'donors', $donorId, [
+            'name' => $donor['name'],
+        ]);
+
+        $this->flash('success', 'Donor deleted successfully.');
+        return $this->redirect($response, "/charity/$charityId/donors");
+    }
+
+    /**
      * Simple validation helper
      */
     private function validate(array $data, array $rules): void

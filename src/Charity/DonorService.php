@@ -240,7 +240,7 @@ class DonorService
     public function updateAddress(int $donorId, array $address): void
     {
         $this->db->execute(
-            "UPDATE donors SET 
+            "UPDATE donors SET
                 address_line1 = ?,
                 address_line2 = ?,
                 address_city = ?,
@@ -253,6 +253,24 @@ class DonorService
                 !empty($address['address_postcode']) ? $address['address_postcode'] : null,
                 $donorId,
             ]
+        );
+    }
+
+    /**
+     * Delete a donor (and their declarations)
+     */
+    public function delete(int $id, int $charityId): void
+    {
+        // Delete declarations first
+        $this->db->execute(
+            "DELETE FROM declarations WHERE donor_id = ? AND charity_id = ?",
+            [$id, $charityId]
+        );
+
+        // Delete the donor
+        $this->db->execute(
+            "DELETE FROM donors WHERE id = ? AND charity_id = ?",
+            [$id, $charityId]
         );
     }
 

@@ -55,7 +55,7 @@ class TransferTest extends TestCase
         $this->assertEquals(1, $id);
     }
 
-    public function testCreateTransferRequiresAtLeastTwoFunds(): void
+    public function testCreateTransferRequiresAtLeastTwoEntriesOfSomeType(): void
     {
         try {
             $this->service->create(1, 1, [
@@ -66,11 +66,14 @@ class TransferTest extends TestCase
                 'fund_entries' => [
                     ['fund_id' => 1, 'amount' => -100.00],
                 ],
+                'cashbook_entries' => [
+                    ['cash_book_id' => 1, 'amount' => 100.00],
+                ],
             ]);
             $this->fail('Expected ValidationException was not thrown');
         } catch (ValidationException $e) {
             $errors = $e->getErrors();
-            $this->assertStringContainsString('at least 2 funds', $errors['fund_entries']);
+            $this->assertStringContainsString('at least 2 fund entries or 2 cashbook entries', $errors['entries']);
         }
     }
 
@@ -117,7 +120,7 @@ class TransferTest extends TestCase
         }
     }
 
-    public function testCreateTransferRejectsCashbookEntries(): void
+    public function testCreateTransferWithCashbookEntriesMustBalance(): void
     {
         try {
             $this->service->create(1, 1, [
@@ -130,14 +133,60 @@ class TransferTest extends TestCase
                     ['fund_id' => 2, 'amount' => 100.00],
                 ],
                 'cashbook_entries' => [
-                    ['cash_book_id' => 1, 'amount' => 100.00],
+                    ['cash_book_id' => 1, 'amount' => 100.00], // Doesn't balance
                 ],
             ]);
             $this->fail('Expected ValidationException was not thrown');
         } catch (ValidationException $e) {
             $errors = $e->getErrors();
-            $this->assertStringContainsString('should not have cashbook', $errors['cashbook_entries']);
+            $this->assertStringContainsString('balance to zero', $errors['cashbook_entries']);
         }
+    }
+
+    public function testCreateCashbookTransfer(): void
+    {
+        $this->db->method('insert')->willReturn(1);
+        $this->db->method('beginTransaction');
+        $this->db->method('commit');
+
+        // Cashbook-only transfer (e.g., petty cash to bank)
+        $id = $this->service->create(1, 1, [
+            'transaction_type' => 'transfer',
+            'transaction_date' => '2024-01-01',
+            'amount' => 100.00,
+            'description' => 'Deposit petty cash to bank',
+            'cashbook_entries' => [
+                ['cash_book_id' => 1, 'amount' => -100.00], // From petty cash
+                ['cash_book_id' => 2, 'amount' => 100.00],  // To bank
+            ],
+        ]);
+
+        $this->assertEquals(1, $id);
+    }
+
+    public function testCreateCombinedFundAndCashbookTransfer(): void
+    {
+        $this->db->method('insert')->willReturn(1);
+        $this->db->method('beginTransaction');
+        $this->db->method('commit');
+
+        // Combined transfer: move funds AND record in cashbooks
+        $id = $this->service->create(1, 1, [
+            'transaction_type' => 'transfer',
+            'transaction_date' => '2024-01-01',
+            'amount' => 100.00,
+            'description' => 'Transfer between funds and accounts',
+            'fund_entries' => [
+                ['fund_id' => 1, 'amount' => -100.00],
+                ['fund_id' => 2, 'amount' => 100.00],
+            ],
+            'cashbook_entries' => [
+                ['cash_book_id' => 1, 'amount' => -100.00],
+                ['cash_book_id' => 2, 'amount' => 100.00],
+            ],
+        ]);
+
+        $this->assertEquals(1, $id);
     }
 
     public function testCreateTransferSupportsMultipleFunds(): void

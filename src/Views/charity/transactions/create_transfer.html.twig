@@ -5,7 +5,7 @@
 {% block charity_content %}
 <div class="max-w-2xl mx-auto">
     <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-900">New Fund Transfer</h1>
+        <h1 class="text-2xl font-bold text-gray-900">New Transfer</h1>
         <p class="text-sm text-gray-500">{{ charity.name }}</p>
     </div>
 
@@ -51,27 +51,71 @@
                            placeholder="Optional reference">
                 </div>
 
-                <!-- Fund Allocation (always split for transfers) -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Fund Allocation *</label>
-                    <p class="text-xs text-gray-500 mb-3">Enter the source fund(s) with negative amounts and destination fund(s) with positive amounts. Totals must balance to zero.</p>
-
-                    <div id="fund-entries" class="space-y-2">
-                        <!-- Fund entry rows will be added here -->
+                <!-- Fund Allocation -->
+                <div class="border-t pt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Fund Transfer</label>
+                        <label class="flex items-center text-sm">
+                            <input type="checkbox" id="enable-fund-transfer" checked
+                                   onchange="toggleFundTransfer()"
+                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-2 text-gray-600">Enable</span>
+                        </label>
                     </div>
+                    <p class="text-xs text-gray-500 mb-3">Move money between designated funds (e.g., General Fund to Building Fund)</p>
 
-                    <button type="button" onclick="addFundEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
-                        + Add fund
-                    </button>
-
-                    <div class="mt-3 p-3 bg-gray-50 rounded-md">
-                        <div class="flex justify-between text-sm">
-                            <span class="font-medium">Total:</span>
-                            <span id="fund-total" class="font-medium">£0.00</span>
+                    <div id="fund-transfer-section">
+                        <div id="fund-entries" class="space-y-2">
+                            <!-- Fund entry rows will be added here -->
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Must balance to £0.00</p>
+
+                        <button type="button" onclick="addFundEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                            + Add fund
+                        </button>
+
+                        <div class="mt-3 p-3 bg-gray-50 rounded-md">
+                            <div class="flex justify-between text-sm">
+                                <span class="font-medium">Fund Total:</span>
+                                <span id="fund-total" class="font-medium">£0.00</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Must balance to £0.00</p>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Cashbook Allocation -->
+                {% if cash_books|length > 0 %}
+                <div class="border-t pt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Cashbook Transfer</label>
+                        <label class="flex items-center text-sm">
+                            <input type="checkbox" id="enable-cashbook-transfer"
+                                   onchange="toggleCashbookTransfer()"
+                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-2 text-gray-600">Enable</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Move money between accounts (e.g., Petty Cash to Bank Account)</p>
+
+                    <div id="cashbook-transfer-section" class="hidden">
+                        <div id="cashbook-entries" class="space-y-2">
+                            <!-- Cashbook entry rows will be added here -->
+                        </div>
+
+                        <button type="button" onclick="addCashbookEntry()" class="mt-2 text-sm text-blue-600 hover:text-blue-800">
+                            + Add cashbook
+                        </button>
+
+                        <div class="mt-3 p-3 bg-gray-50 rounded-md">
+                            <div class="flex justify-between text-sm">
+                                <span class="font-medium">Cashbook Total:</span>
+                                <span id="cashbook-total" class="font-medium">£0.00</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Must balance to £0.00</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="flex justify-end space-x-3">
                     <a href="/charity/{{ charity.id }}/transactions" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
@@ -88,7 +132,47 @@
 
 <script>
 const funds = {{ funds|json_encode|raw }};
+const cashBooks = {{ cash_books|default([])|json_encode|raw }};
 let fundEntryCount = 0;
+let cashbookEntryCount = 0;
+
+function toggleFundTransfer() {
+    const enabled = document.getElementById('enable-fund-transfer').checked;
+    const section = document.getElementById('fund-transfer-section');
+    const entries = document.getElementById('fund-entries');
+
+    if (enabled) {
+        section.classList.remove('hidden');
+        if (entries.children.length === 0) {
+            addFundEntry();
+            addFundEntry();
+        }
+    } else {
+        section.classList.add('hidden');
+        // Clear fund entries when disabled
+        entries.innerHTML = '';
+        updateFundTotals();
+    }
+}
+
+function toggleCashbookTransfer() {
+    const enabled = document.getElementById('enable-cashbook-transfer').checked;
+    const section = document.getElementById('cashbook-transfer-section');
+    const entries = document.getElementById('cashbook-entries');
+
+    if (enabled) {
+        section.classList.remove('hidden');
+        if (entries.children.length === 0) {
+            addCashbookEntry();
+            addCashbookEntry();
+        }
+    } else {
+        section.classList.add('hidden');
+        // Clear cashbook entries when disabled
+        entries.innerHTML = '';
+        updateCashbookTotals();
+    }
+}
 
 function addFundEntry(fundId = '', amount = '') {
     const container = document.getElementById('fund-entries');
@@ -111,8 +195,9 @@ function addFundEntry(fundId = '', amount = '') {
             <input type="number" name="fund_entries[${entryId}][amount]" required step="0.01"
                    value="${amount}"
                    onchange="updateFundTotals()"
+                   oninput="updateFundTotals()"
                    class="block w-full pl-7 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                   placeholder="0.00 (- for source, + for dest)">
+                   placeholder="- source, + dest">
         </div>
         <button type="button" onclick="removeFundEntry(${entryId})"
                 class="px-2 py-2 text-red-600 hover:text-red-800">
@@ -134,6 +219,51 @@ function removeFundEntry(entryId) {
     }
 }
 
+function addCashbookEntry(cashbookId = '', amount = '') {
+    const container = document.getElementById('cashbook-entries');
+    const entryId = cashbookEntryCount++;
+
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 items-start';
+    div.id = `cashbook-entry-${entryId}`;
+
+    div.innerHTML = `
+        <select name="cashbook_entries[${entryId}][cash_book_id]" required
+                class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <option value="">Select cashbook</option>
+            ${cashBooks.map(c => `<option value="${c.id}" ${c.id == cashbookId ? 'selected' : ''}>${c.name}</option>`).join('')}
+        </select>
+        <div class="relative flex-1">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span class="text-gray-500 sm:text-sm">&pound;</span>
+            </div>
+            <input type="number" name="cashbook_entries[${entryId}][amount]" required step="0.01"
+                   value="${amount}"
+                   onchange="updateCashbookTotals()"
+                   oninput="updateCashbookTotals()"
+                   class="block w-full pl-7 rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                   placeholder="- source, + dest">
+        </div>
+        <button type="button" onclick="removeCashbookEntry(${entryId})"
+                class="px-2 py-2 text-red-600 hover:text-red-800">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    `;
+
+    container.appendChild(div);
+    updateCashbookTotals();
+}
+
+function removeCashbookEntry(entryId) {
+    const entry = document.getElementById(`cashbook-entry-${entryId}`);
+    if (entry) {
+        entry.remove();
+        updateCashbookTotals();
+    }
+}
+
 function updateFundTotals() {
     const entries = document.querySelectorAll('[name^="fund_entries"][name$="[amount]"]');
     let total = 0;
@@ -146,7 +276,6 @@ function updateFundTotals() {
     const totalDisplay = document.getElementById('fund-total');
     totalDisplay.textContent = `£${total.toFixed(2)}`;
 
-    // Highlight if not balanced
     if (Math.abs(total) > 0.01) {
         totalDisplay.classList.add('text-red-600');
         totalDisplay.classList.remove('text-green-600');
@@ -156,7 +285,30 @@ function updateFundTotals() {
     }
 }
 
-// Initialize with 2 empty fund entries
+function updateCashbookTotals() {
+    const entries = document.querySelectorAll('[name^="cashbook_entries"][name$="[amount]"]');
+    let total = 0;
+
+    entries.forEach(input => {
+        const value = parseFloat(input.value) || 0;
+        total += value;
+    });
+
+    const totalDisplay = document.getElementById('cashbook-total');
+    if (totalDisplay) {
+        totalDisplay.textContent = `£${total.toFixed(2)}`;
+
+        if (Math.abs(total) > 0.01) {
+            totalDisplay.classList.add('text-red-600');
+            totalDisplay.classList.remove('text-green-600');
+        } else {
+            totalDisplay.classList.add('text-green-600');
+            totalDisplay.classList.remove('text-red-600');
+        }
+    }
+}
+
+// Initialize with fund entries enabled
 document.addEventListener('DOMContentLoaded', function() {
     addFundEntry();
     addFundEntry();
@@ -164,23 +316,56 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Form validation
 document.getElementById('transaction-form').addEventListener('submit', function(e) {
-    const entries = document.querySelectorAll('[name^="fund_entries"][name$="[amount]"]');
-    let total = 0;
+    const fundEnabled = document.getElementById('enable-fund-transfer').checked;
+    const cashbookCheckbox = document.getElementById('enable-cashbook-transfer');
+    const cashbookEnabled = cashbookCheckbox ? cashbookCheckbox.checked : false;
 
-    entries.forEach(input => {
-        total += parseFloat(input.value) || 0;
-    });
-
-    if (Math.abs(total) > 0.01) {
+    if (!fundEnabled && !cashbookEnabled) {
         e.preventDefault();
-        alert('Fund entries must balance to £0.00. Current total: £' + total.toFixed(2));
+        alert('You must enable at least one transfer type (Fund or Cashbook).');
         return false;
     }
 
-    if (entries.length < 2) {
-        e.preventDefault();
-        alert('Transfers must have at least 2 fund entries (source and destination).');
-        return false;
+    // Validate fund entries if enabled
+    if (fundEnabled) {
+        const fundEntries = document.querySelectorAll('[name^="fund_entries"][name$="[amount]"]');
+        let fundTotal = 0;
+        fundEntries.forEach(input => {
+            fundTotal += parseFloat(input.value) || 0;
+        });
+
+        if (fundEntries.length < 2) {
+            e.preventDefault();
+            alert('Fund transfers must have at least 2 entries (source and destination).');
+            return false;
+        }
+
+        if (Math.abs(fundTotal) > 0.01) {
+            e.preventDefault();
+            alert('Fund entries must balance to £0.00. Current total: £' + fundTotal.toFixed(2));
+            return false;
+        }
+    }
+
+    // Validate cashbook entries if enabled
+    if (cashbookEnabled) {
+        const cashbookEntries = document.querySelectorAll('[name^="cashbook_entries"][name$="[amount]"]');
+        let cashbookTotal = 0;
+        cashbookEntries.forEach(input => {
+            cashbookTotal += parseFloat(input.value) || 0;
+        });
+
+        if (cashbookEntries.length < 2) {
+            e.preventDefault();
+            alert('Cashbook transfers must have at least 2 entries (source and destination).');
+            return false;
+        }
+
+        if (Math.abs(cashbookTotal) > 0.01) {
+            e.preventDefault();
+            alert('Cashbook entries must balance to £0.00. Current total: £' + cashbookTotal.toFixed(2));
+            return false;
+        }
     }
 });
 </script>

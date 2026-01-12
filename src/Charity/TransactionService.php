@@ -681,8 +681,15 @@ class TransactionService
             foreach ($data['cashbook_entries'] as $entry) {
                 if (!empty($entry['cash_book_id']) && isset($entry['amount'])) {
                     $amount = (float) $entry['amount'];
-                    // Convert to signed amount based on transaction type
-                    $signedAmount = $transactionType === 'receipt' ? $amount : -$amount;
+
+                    // For transfers, amounts are already signed (positive/negative)
+                    // For receipts/payments, convert to signed amount based on transaction type
+                    if ($transactionType === 'transfer') {
+                        $signedAmount = $amount;
+                    } else {
+                        $signedAmount = $transactionType === 'receipt' ? abs($amount) : -abs($amount);
+                    }
+
                     $entries[] = [
                         'cash_book_id' => (int) $entry['cash_book_id'],
                         'amount' => $signedAmount,
@@ -792,18 +799,18 @@ class TransactionService
         $errors = [];
 
         // Must have at least one fund entry
-        if (empty($fundEntries)) {
-            $errors['fund_entries'] = 'At least one fund must be specified';
-        }
-
         // Transfers have special validation rules
         if ($transactionType === 'transfer') {
-            // Transfers must have at least 2 fund entries (source and destination)
-            if (count($fundEntries) < 2) {
-                $errors['fund_entries'] = 'Transfers must have at least 2 funds (source and destination)';
-            } else {
-                // Only check balance if we have at least 2 funds
-                // Fund entries must sum to zero for transfers
+            $hasFundTransfer = count($fundEntries) >= 2;
+            $hasCashbookTransfer = count($cashbookEntries) >= 2;
+
+            // Must have at least one type of transfer (fund or cashbook)
+            if (!$hasFundTransfer && !$hasCashbookTransfer) {
+                $errors['entries'] = 'Transfers must have at least 2 fund entries or 2 cashbook entries';
+            }
+
+            // If fund entries provided, they must sum to zero
+            if (!empty($fundEntries)) {
                 $fundSum = array_sum(array_column($fundEntries, 'amount'));
                 if (abs($fundSum) > 0.01) {
                     $errors['fund_entries'] = sprintf(
@@ -813,16 +820,26 @@ class TransactionService
                 }
             }
 
+            // If cashbook entries provided, they must sum to zero
+            if (!empty($cashbookEntries)) {
+                $cashbookSum = array_sum(array_column($cashbookEntries, 'amount'));
+                if (abs($cashbookSum) > 0.01) {
+                    $errors['cashbook_entries'] = sprintf(
+                        'Transfer cashbook entries must balance to zero (currently £%.2f)',
+                        abs($cashbookSum)
+                    );
+                }
+            }
+
             // Transfers should not have categories
             if (!empty($categoryEntries)) {
                 $errors['category_entries'] = 'Transfers should not have categories';
             }
-
-            // Transfers should not have cashbook entries
-            if (!empty($cashbookEntries)) {
-                $errors['cashbook_entries'] = 'Transfers should not have cashbook entries';
-            }
         } else {
+            // Regular receipts/payments require at least one fund
+            if (empty($fundEntries)) {
+                $errors['fund_entries'] = 'At least one fund must be specified';
+            }
             // Regular receipts/payments validation
             // Must have at least one category entry
             if (empty($categoryEntries)) {
@@ -928,14 +945,14 @@ class TransactionService
             $errors['description'] = 'Description is required';
         }
 
-        // Fund is required - either as fund_id (simple mode) or fund_entries (split mode)
-        if (empty($data['fund_id']) && empty($data['fund_entries'])) {
-            $errors['fund_id'] = 'Fund is required';
-        }
-
-        // Category is required for receipts and payments (not for transfers)
         $transactionType = $data['transaction_type'] ?? null;
+
+        // Fund is required for receipts/payments, optional for transfers (which can be cashbook-only)
         if ($transactionType !== 'transfer') {
+            if (empty($data['fund_id']) && empty($data['fund_entries'])) {
+                $errors['fund_id'] = 'Fund is required';
+            }
+            // Category is required for receipts and payments (not for transfers)
             if (empty($data['operational_category_id']) && empty($data['category_entries'])) {
                 $errors['operational_category_id'] = 'Category is required';
             }

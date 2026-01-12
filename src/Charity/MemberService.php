@@ -254,7 +254,7 @@ class MemberService
     public function updateAddress(int $memberId, array $address): void
     {
         $this->db->execute(
-            "UPDATE members SET 
+            "UPDATE members SET
                 address_line1 = ?,
                 address_line2 = ?,
                 address_city = ?,
@@ -269,6 +269,24 @@ class MemberService
                 !empty($address['address_postcode']) ? $address['address_postcode'] : null,
                 $memberId,
             ]
+        );
+    }
+
+    /**
+     * Delete a member (and their dues)
+     */
+    public function delete(int $memberId, int $charityId): void
+    {
+        // Delete dues first
+        $this->db->execute(
+            "DELETE FROM member_dues WHERE member_id = ?",
+            [$memberId]
+        );
+
+        // Delete the member
+        $this->db->execute(
+            "DELETE FROM members WHERE id = ? AND charity_id = ?",
+            [$memberId, $charityId]
         );
     }
 

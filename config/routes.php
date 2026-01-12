@@ -197,6 +197,8 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('donors.edit'));
             $donors->post('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':update')
                 ->add(new PermissionMiddleware('donors.edit'));
+            $donors->post('/{id}/delete', \CharityCashbook\Charity\Controllers\DonorController::class . ':delete')
+                ->add(new PermissionMiddleware('donors.edit'));
             // Privacy / GDPR
             $donors->get('/{id}/privacy/export', \CharityCashbook\Charity\Controllers\PrivacyController::class . ':exportDonorData')
                 ->add(new PermissionMiddleware('privacy.export'));
@@ -271,6 +273,8 @@ return function (App $app) {
             $members->get('/{id}/edit', \CharityCashbook\Charity\Controllers\MemberController::class . ':edit')
                 ->add(new PermissionMiddleware('members.edit'));
             $members->post('/{id}', \CharityCashbook\Charity\Controllers\MemberController::class . ':update')
+                ->add(new PermissionMiddleware('members.edit'));
+            $members->post('/{id}/delete', \CharityCashbook\Charity\Controllers\MemberController::class . ':delete')
                 ->add(new PermissionMiddleware('members.edit'));
             $members->post('/{id}/trustee-role', \CharityCashbook\Charity\Controllers\MemberController::class . ':addTrusteeRole')
                 ->add(new PermissionMiddleware('members.manage_trustees'));
