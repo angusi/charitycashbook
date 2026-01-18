@@ -79,7 +79,7 @@ class SqliteTestDatabase implements DatabaseInterface
                 county TEXT,
                 postcode TEXT,
                 country TEXT DEFAULT 'United Kingdom',
-                session_timeout_hours INTEGER DEFAULT 24,
+                session_timeout_minutes INTEGER DEFAULT 480,
                 allow_account_linking INTEGER DEFAULT 1,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,

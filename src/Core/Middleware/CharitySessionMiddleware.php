@@ -34,7 +34,7 @@ class CharitySessionMiddleware implements MiddlewareInterface
         $charity = $request->getAttribute('charity');
 
         // Check if charity session is still valid
-        if (!$this->sessionManager->checkCharitySession($session, $charityId, $charity['session_timeout_hours'])) {
+        if (!$this->sessionManager->checkCharitySession($session, $charityId, $charity['session_timeout_minutes'])) {
             // Session expired - need re-authentication
             $response = new Response();
             return $response

@@ -30,14 +30,25 @@ class CharitySelectionController extends BaseController
         unset($_SESSION['oauth_is_reauth']);
 
         $identityService = $this->get(IdentityService::class);
+        $sessionManager = $this->get(SessionManager::class);
         $charities = $identityService->getUserCharities($userId);
         $suspendedCharities = $identityService->getUserSuspendedCharities($userId);
-        
+
+        // Check session status for each charity
+        foreach ($charities as &$charity) {
+            $charity['has_valid_session'] = $sessionManager->checkCharitySession(
+                $session,
+                $charity['id'],
+                $charity['session_timeout_minutes'] ?? 480
+            );
+        }
+        unset($charity); // Break reference
+
         // If user only has one charity (and no suspended ones), redirect directly
         if (count($charities) === 1 && count($suspendedCharities) === 0) {
             return $this->redirect($response, '/charity/' . $charities[0]['id']);
         }
-        
+
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/select.html.twig', [
             'charities' => $charities,
@@ -79,7 +90,7 @@ class CharitySelectionController extends BaseController
         $hasValidSession = $sessionManager->checkCharitySession(
             $session,
             $charityId,
-            $charity['session_timeout_hours']
+            $charity['session_timeout_minutes']
         );
         
         if ($hasValidSession && !$isSensitiveReauth) {
@@ -117,7 +128,7 @@ class CharitySelectionController extends BaseController
                             $charityId,
                             $membership['role'],
                             $recentIdentity['identity_id'],
-                            $charity['session_timeout_hours']
+                            $charity['session_timeout_minutes']
                         );
 
                         // Update last authenticated timestamp and sync display name

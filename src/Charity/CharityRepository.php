@@ -24,8 +24,7 @@ class CharityRepository
     public function findById(int $id): ?array
     {
         return $this->db->queryOne(
-            "SELECT *, registration_number AS charity_number, 
-                    (session_timeout_hours * 60) AS session_timeout_minutes 
+            "SELECT *, registration_number AS charity_number
              FROM charities WHERE id = ?",
             [$id]
         );

@@ -98,7 +98,7 @@ class SessionManager
     /**
      * Check if a charity session is still valid (not expired and has tracked identity)
      */
-    public function checkCharitySession(Session $session, int $charityId, int $timeoutHours): bool
+    public function checkCharitySession(Session $session, int $charityId, int $timeoutMinutes): bool
     {
         $charitySession = $session->getCharitySession($charityId);
 
@@ -112,7 +112,7 @@ class SessionManager
         }
 
         $authenticatedAt = $charitySession['authenticated_at'];
-        $expiresAt = $authenticatedAt + ($timeoutHours * 3600);
+        $expiresAt = $authenticatedAt + ($timeoutMinutes * 60);
 
         return time() < $expiresAt;
     }
@@ -125,7 +125,7 @@ class SessionManager
         int $charityId,
         string $role,
         int $identityId,
-        int $timeoutHours
+        int $timeoutMinutes
     ): void {
         // Get current charity sessions
         $row = $this->db->queryOne(
@@ -142,7 +142,7 @@ class SessionManager
             'role' => $role,
             'authenticated_at' => time(),
             'authenticated_via_identity_id' => $identityId,
-            'timeout_hours' => $timeoutHours,
+            'timeout_minutes' => $timeoutMinutes,
         ];
 
         $this->db->execute(

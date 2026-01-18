@@ -96,18 +96,17 @@ class SettingsController extends BaseController
             $charityRepo = $this->get(CharityRepository::class);
             $auditService = $this->get(AuditService::class);
             
-            // Session timeout in minutes - convert to hours for storage
-            $sessionTimeout = !empty($data['session_timeout']) ? (int) $data['session_timeout'] : 480;
-            $sessionTimeout = max(15, min(1440, $sessionTimeout)); // 15 min to 24 hours
-            $sessionTimeoutHours = (int) ceil($sessionTimeout / 60);
-            
+            // Session timeout in minutes - store directly
+            $sessionTimeoutMinutes = !empty($data['session_timeout']) ? (int) $data['session_timeout'] : 480;
+            $sessionTimeoutMinutes = max(15, min(1440, $sessionTimeoutMinutes)); // 15 min to 24 hours
+
             $charityRepo->update($charityId, [
-                'session_timeout_hours' => $sessionTimeoutHours,
+                'session_timeout_minutes' => $sessionTimeoutMinutes,
             ]);
             
             $auditService->log($charityId, $userId, 'settings_updated', 'charity', $charityId, [
                 'section' => 'auth',
-                'session_timeout' => $sessionTimeout,
+                'session_timeout_minutes' => $sessionTimeoutMinutes,
             ]);
             
             $this->flash('success', 'Authentication settings updated.');

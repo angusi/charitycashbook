@@ -45,7 +45,7 @@ class CharitySessionMiddlewareTest extends TestCase
                     '__routeParser__' => $routeParser,
                     '__routingResults__' => $routingResults,
                     'session' => $session,
-                    'charity' => $charity ?? ['id' => 1, 'session_timeout_hours' => 24],
+                    'charity' => $charity ?? ['id' => 1, 'session_timeout_minutes' => 480],
                     default => null,
                 };
             });
@@ -61,11 +61,11 @@ class CharitySessionMiddlewareTest extends TestCase
     public function testAllowsAccessWhenSessionValid(): void
     {
         $session = $this->createMock(Session::class);
-        $charity = ['id' => 1, 'session_timeout_hours' => 24];
+        $charity = ['id' => 1, 'session_timeout_minutes' => 480];
         $request = $this->createRequest(1, $session, $charity);
 
         $this->sessionManager->method('checkCharitySession')
-            ->with($session, 1, 24)
+            ->with($session, 1, 480)
             ->willReturn(true);
 
         $expectedResponse = new Response();
@@ -82,11 +82,11 @@ class CharitySessionMiddlewareTest extends TestCase
     public function testRedirectsWhenSessionExpired(): void
     {
         $session = $this->createMock(Session::class);
-        $charity = ['id' => 5, 'session_timeout_hours' => 8];
+        $charity = ['id' => 5, 'session_timeout_minutes' => 480];
         $request = $this->createRequest(5, $session, $charity);
 
         $this->sessionManager->method('checkCharitySession')
-            ->with($session, 5, 8)
+            ->with($session, 5, 480)
             ->willReturn(false);
 
         $handler = $this->createMock(RequestHandlerInterface::class);
@@ -101,7 +101,7 @@ class CharitySessionMiddlewareTest extends TestCase
     public function testRedirectsWithCorrectCharityId(): void
     {
         $session = $this->createMock(Session::class);
-        $charity = ['id' => 42, 'session_timeout_hours' => 12];
+        $charity = ['id' => 42, 'session_timeout_minutes' => 720];
         $request = $this->createRequest(42, $session, $charity);
 
         $this->sessionManager->method('checkCharitySession')
@@ -139,7 +139,7 @@ class CharitySessionMiddlewareTest extends TestCase
                 '10' => [
                     'role' => 'admin',
                     'authenticated_at' => 1234567890,
-                    'timeout_hours' => 24,
+                    'timeout_minutes' => 480,
                 ],
             ]),
         ]);
@@ -148,6 +148,6 @@ class CharitySessionMiddlewareTest extends TestCase
 
         $this->assertSame('admin', $charitySession['role']);
         $this->assertSame(1234567890, $charitySession['authenticated_at']);
-        $this->assertSame(24, $charitySession['timeout_hours']);
+        $this->assertSame(480, $charitySession['timeout_minutes']);
     }
 }

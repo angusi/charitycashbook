@@ -30,8 +30,7 @@ class CharityRepositoryTest extends TestCase
             'id' => 1,
             'name' => 'Test Charity',
             'registration_number' => '12345',
-            'session_timeout_hours' => 24,
-            'session_timeout_minutes' => 1440,
+            'session_timeout_minutes' => 480,
         ];
 
         $this->db->method('queryOne')
@@ -84,7 +83,7 @@ class CharityRepositoryTest extends TestCase
 
     public function testUpdateSettingsCallsUpdate(): void
     {
-        $data = ['name' => 'Updated Name', 'session_timeout_hours' => 48];
+        $data = ['name' => 'Updated Name', 'session_timeout_minutes' => 960];
 
         $this->db->expects($this->once())
             ->method('update')

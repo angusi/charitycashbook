@@ -158,7 +158,7 @@ class SessionManagerTest extends TestCase
             'charity_sessions' => '{}',
         ]);
 
-        $result = $this->sessionManager->checkCharitySession($session, 42, 24);
+        $result = $this->sessionManager->checkCharitySession($session, 42, 480);
 
         $this->assertFalse($result);
     }
@@ -176,7 +176,7 @@ class SessionManagerTest extends TestCase
             ]),
         ]);
 
-        $result = $this->sessionManager->checkCharitySession($session, 42, 24); // 24 hour timeout
+        $result = $this->sessionManager->checkCharitySession($session, 42, 480); // 480 minute (8 hour) timeout
 
         $this->assertTrue($result);
     }
@@ -194,7 +194,7 @@ class SessionManagerTest extends TestCase
             ]),
         ]);
 
-        $result = $this->sessionManager->checkCharitySession($session, 42, 24); // 24 hour timeout
+        $result = $this->sessionManager->checkCharitySession($session, 42, 480); // 480 minute (8 hour) timeout
 
         $this->assertFalse($result);
     }
@@ -214,7 +214,7 @@ class SessionManagerTest extends TestCase
             ]),
         ]);
 
-        $result = $this->sessionManager->checkCharitySession($session, 42, 24); // 24 hour timeout
+        $result = $this->sessionManager->checkCharitySession($session, 42, 480); // 480 minute timeout
 
         $this->assertFalse($result);
     }
@@ -239,13 +239,13 @@ class SessionManagerTest extends TestCase
                 })
             );
 
-        $this->sessionManager->refreshCharitySession(1, 42, 'admin', 5, 24);
+        $this->sessionManager->refreshCharitySession(1, 42, 'admin', 5, 480);
 
         $decoded = json_decode($capturedJson, true);
         $this->assertArrayHasKey('42', $decoded);
         $this->assertSame('admin', $decoded['42']['role']);
         $this->assertSame(5, $decoded['42']['authenticated_via_identity_id']);
-        $this->assertSame(24, $decoded['42']['timeout_hours']);
+        $this->assertSame(480, $decoded['42']['timeout_minutes']);
     }
 
     public function testRefreshCharitySessionDoesNothingWhenSessionNotFound(): void
@@ -253,7 +253,7 @@ class SessionManagerTest extends TestCase
         $this->db->method('queryOne')->willReturn(null);
         $this->db->expects($this->never())->method('execute');
 
-        $this->sessionManager->refreshCharitySession(999, 42, 'admin', 5, 24);
+        $this->sessionManager->refreshCharitySession(999, 42, 'admin', 5, 480);
     }
 
     // ========================================

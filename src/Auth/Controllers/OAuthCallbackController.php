@@ -428,7 +428,7 @@ class OAuthCallbackController extends BaseController
                     $charityId,
                     $membership['role'],
                     $identity['id'],
-                    $charity['session_timeout_hours']
+                    $charity['session_timeout_minutes']
                 );
 
                 // Sync display name from OAuth provider on reauth

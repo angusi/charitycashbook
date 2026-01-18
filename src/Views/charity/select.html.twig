@@ -23,19 +23,28 @@
                 <div class="p-6 hover:bg-gray-50">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-lg font-medium text-gray-900">{{ charity.name }}</h3>
+                            <h3 class="text-lg font-medium text-gray-900">
+                                {{ charity.name }}
+                                {% if not charity.has_valid_session %}
+                                    <span class="ml-2 text-sm font-normal text-gray-400">(signed out)</span>
+                                {% endif %}
+                            </h3>
                             {% if charity.charity_number %}
                                 <p class="text-sm text-gray-500">Charity No: {{ charity.charity_number }}</p>
                             {% endif %}
                             <p class="text-sm text-gray-500">
-                                Your role: 
+                                Your role:
                                 <span class="font-medium capitalize">{{ charity.role }}</span>
                             </p>
                         </div>
                         <div>
-                            <a href="/charities/{{ charity.id }}/enter" 
-                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                Enter
+                            <a href="/charities/{{ charity.id }}/enter"
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white {{ charity.has_valid_session ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-600' }} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                {% if charity.has_valid_session %}
+                                    Enter
+                                {% else %}
+                                    Sign In
+                                {% endif %}
                                 <svg class="ml-2 -mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                                 </svg>
