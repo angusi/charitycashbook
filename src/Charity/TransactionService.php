@@ -51,6 +51,7 @@ class TransactionService
                        pf.id as primary_fund_id,
                        poc.name as category_name,
                        prc.name as reporting_category_name,
+                       pcb.name as cashbook_name,
                        d.name as donor_name,
                        (SELECT COUNT(*) FROM transaction_fund_entries WHERE transaction_id = t.id) as fund_entry_count,
                        (SELECT COUNT(*) FROM transaction_category_entries WHERE transaction_id = t.id) as category_entry_count,
@@ -65,6 +66,10 @@ class TransactionService
                 )
                 LEFT JOIN operational_categories poc ON poc.id = COALESCE(tce_primary.operational_category_id, t.operational_category_id)
                 LEFT JOIN reporting_categories prc ON prc.id = poc.reporting_category_id
+                LEFT JOIN transaction_cashbook_entries tcbe_primary ON tcbe_primary.id = (
+                    SELECT id FROM transaction_cashbook_entries WHERE transaction_id = t.id ORDER BY ABS(amount) DESC LIMIT 1
+                )
+                LEFT JOIN cash_books pcb ON pcb.id = tcbe_primary.cash_book_id
                 LEFT JOIN donors d ON d.id = t.donor_id
                 WHERE t.charity_id = ? AND t.is_deleted = FALSE";
         
@@ -811,12 +816,17 @@ class TransactionService
         // Must have at least one fund entry
         // Transfers have special validation rules
         if ($transactionType === 'transfer') {
-            $hasFundTransfer = count($fundEntries) >= 2;
-            $hasCashbookTransfer = count($cashbookEntries) >= 2;
+            // Check if there's an actual fund transfer (multiple different funds)
+            $uniqueFundIds = array_unique(array_column($fundEntries, 'fund_id'));
+            $hasFundTransfer = count($uniqueFundIds) >= 2;
+
+            // Check if there's an actual cashbook transfer (multiple different cashbooks)
+            $uniqueCashbookIds = array_unique(array_column($cashbookEntries, 'cash_book_id'));
+            $hasCashbookTransfer = count($uniqueCashbookIds) >= 2;
 
             // Must have at least one type of transfer (fund or cashbook)
             if (!$hasFundTransfer && !$hasCashbookTransfer) {
-                $errors['entries'] = 'Transfers must have at least 2 fund entries or 2 cashbook entries';
+                $errors['entries'] = 'Transfers must move money between at least 2 different funds or 2 different cashbooks';
             }
 
             // If fund entries provided, they must sum to zero

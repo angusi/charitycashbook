@@ -73,7 +73,7 @@ class TransferTest extends TestCase
             $this->fail('Expected ValidationException was not thrown');
         } catch (ValidationException $e) {
             $errors = $e->getErrors();
-            $this->assertStringContainsString('at least 2 fund entries or 2 cashbook entries', $errors['entries']);
+            $this->assertStringContainsString('at least 2 different funds or 2 different cashbooks', $errors['entries']);
         }
     }
 
