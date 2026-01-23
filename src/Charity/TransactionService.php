@@ -164,6 +164,11 @@ class TransactionService
             $params[] = $filters['fund_id'];
         }
 
+        if (!empty($filters['category_id'])) {
+            $sql .= " AND EXISTS (SELECT 1 FROM transaction_category_entries tce WHERE tce.transaction_id = t.id AND tce.operational_category_id = ?)";
+            $params[] = $filters['category_id'];
+        }
+
         if (!empty($filters['type'])) {
             $sql .= " AND t.transaction_type = ?";
             $params[] = $filters['type'];
@@ -202,6 +207,11 @@ class TransactionService
         if (!empty($filters['fund_id'])) {
             $sql .= " AND EXISTS (SELECT 1 FROM transaction_fund_entries tfe WHERE tfe.transaction_id = t.id AND tfe.fund_id = ?)";
             $params[] = $filters['fund_id'];
+        }
+
+        if (!empty($filters['category_id'])) {
+            $sql .= " AND EXISTS (SELECT 1 FROM transaction_category_entries tce WHERE tce.transaction_id = t.id AND tce.operational_category_id = ?)";
+            $params[] = $filters['category_id'];
         }
 
         if (!empty($filters['type'])) {

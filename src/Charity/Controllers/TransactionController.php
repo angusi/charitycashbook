@@ -37,6 +37,7 @@ class TransactionController extends BaseController
             'date_to' => $params['date_to'] ?? null,
             'fund_id' => !empty($params['fund_id']) ? (int) $params['fund_id'] : null,
             'type' => $params['type'] ?? null,
+            'category_id' => !empty($params['category_id']) ? (int) $params['category_id'] : null,
             'search' => $params['search'] ?? null,
         ];
 
@@ -52,6 +53,7 @@ class TransactionController extends BaseController
 
         $transactions = $transactionService->getTransactions($charityId, $filters);
         $funds = $fundService->getAll($charityId);
+        $categories = $categoryService->getOperationalCategories($charityId, $filters['type'] ?? null);
 
         // Get totals for current filter (not just current page)
         $totals = $transactionService->getTotals($charityId, [
@@ -59,6 +61,7 @@ class TransactionController extends BaseController
             'date_to' => $filters['date_to'],
             'fund_id' => $filters['fund_id'],
             'type' => $filters['type'],
+            'category_id' => $filters['category_id'],
             'search' => $filters['search'],
         ]);
 
@@ -68,6 +71,7 @@ class TransactionController extends BaseController
             'date_to' => $filters['date_to'],
             'fund_id' => $filters['fund_id'],
             'type' => $filters['type'],
+            'category_id' => $filters['category_id'],
             'search' => $filters['search'],
         ]);
         $baseUrl = "/charity/$charityId/transactions" . ($queryParams ? '?' . http_build_query($queryParams) : '');
@@ -78,6 +82,7 @@ class TransactionController extends BaseController
             [
                 'transactions' => $transactions,
                 'funds' => $funds,
+                'categories' => $categories,
                 'filters' => $filters,
                 'total_receipts' => $totals['receipts'] ?? 0,
                 'total_payments' => $totals['payments'] ?? 0,

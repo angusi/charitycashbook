@@ -51,6 +51,17 @@
             </select>
         </div>
         <div>
+            <label class="block text-sm font-medium text-gray-700">Category</label>
+            <select name="category_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="">All Categories</option>
+                {% for category in categories %}
+                    <option value="{{ category.id }}" {{ filters.category_id == category.id ? 'selected' : '' }}>
+                        {{ category.reporting_category_name }} - {{ category.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
             <label class="block text-sm font-medium text-gray-700">Type</label>
             <select name="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                 <option value="">All Types</option>
