@@ -254,6 +254,12 @@ class AccountLinkingService
         $message .= "If you did not make this request, you can safely ignore this email.\n\n";
         $message .= "Regards,\nCharity Cashbook";
 
+        // Validate email to prevent header injection
+        if (!$this->isValidEmailForHeaders($email)) {
+            $this->logger->warning('Invalid email address for account linking', ['email' => $email]);
+            throw new \InvalidArgumentException('Invalid email address');
+        }
+
         // Use PHP mail() - in production, this would use a proper mail service
         mail($email, $subject, $message, "From: noreply@charitycashbook.org");
 
@@ -261,5 +267,19 @@ class AccountLinkingService
             'to' => $email,
             'new_email' => $newEmail,
         ]);
+    }
+
+    /**
+     * Validate email address and check for CRLF injection attempts
+     */
+    private function isValidEmailForHeaders(string $email): bool
+    {
+        // Check for CRLF injection attempts
+        if (preg_match('/[\r\n]/', $email)) {
+            return false;
+        }
+
+        // Validate email format
+        return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
     }
 }

@@ -136,6 +136,14 @@ const cashBooks = {{ cash_books|default([])|json_encode|raw }};
 let fundEntryCount = 0;
 let cashbookEntryCount = 0;
 
+// HTML escape function to prevent XSS
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function toggleFundTransfer() {
     const enabled = document.getElementById('enable-fund-transfer').checked;
     const section = document.getElementById('fund-transfer-section');
@@ -186,7 +194,7 @@ function addFundEntry(fundId = '', amount = '') {
         <select name="fund_entries[${entryId}][fund_id]" required
                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             <option value="">Select fund</option>
-            ${funds.map(f => `<option value="${f.id}" ${f.id == fundId ? 'selected' : ''}>${f.name}</option>`).join('')}
+            ${funds.map(f => `<option value="${f.id}" ${f.id == fundId ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('')}
         </select>
         <div class="relative flex-1">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -231,7 +239,7 @@ function addCashbookEntry(cashbookId = '', amount = '') {
         <select name="cashbook_entries[${entryId}][cash_book_id]" required
                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             <option value="">Select cashbook</option>
-            ${cashBooks.map(c => `<option value="${c.id}" ${c.id == cashbookId ? 'selected' : ''}>${c.name}</option>`).join('')}
+            ${cashBooks.map(c => `<option value="${c.id}" ${c.id == cashbookId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <div class="relative flex-1">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

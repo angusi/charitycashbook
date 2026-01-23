@@ -374,14 +374,22 @@ class CharityManager
      */
     public function sendInvitation(int $charityId, string $email, string $appUrl): void
     {
+        // Validate email to prevent header injection
+        if (!$this->isValidEmailForHeaders($email)) {
+            throw new \InvalidArgumentException('Invalid email address');
+        }
+
         $charity = $this->getCharity($charityId);
         if (!$charity) {
             throw new \RuntimeException("Charity not found: $charityId");
         }
 
         $loginUrl = rtrim($appUrl, '/') . '/login';
-        
-        $subject = "You've been invited to manage {$charity['name']} on Charity Cashbook";
+
+        // Sanitize charity name to prevent header injection in subject
+        $charityName = $this->sanitizeForEmailHeader($charity['name']);
+
+        $subject = "You've been invited to manage {$charityName} on Charity Cashbook";
         $message = "Hello,\n\n";
         $message .= "You have been set up as an administrator for {$charity['name']} on Charity Cashbook.\n\n";
         $message .= "Charity Cashbook is a simple accounting system for UK charities, helping you track income and expenditure, manage Gift Aid, and produce reports for your trustees and regulators.\n\n";
@@ -401,6 +409,28 @@ class CharityManager
             'charity_name' => $charity['name'],
             'email' => $email,
         ]);
+    }
+
+    /**
+     * Validate email address and check for CRLF injection attempts
+     */
+    private function isValidEmailForHeaders(string $email): bool
+    {
+        // Check for CRLF injection attempts
+        if (preg_match('/[\r\n]/', $email)) {
+            return false;
+        }
+
+        // Validate email format
+        return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+    }
+
+    /**
+     * Sanitize a string for use in email headers (removes CRLF characters)
+     */
+    private function sanitizeForEmailHeader(string $value): string
+    {
+        return preg_replace('/[\r\n]+/', ' ', $value);
     }
 
     /**

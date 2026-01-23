@@ -319,6 +319,14 @@ const funds = {{ funds|json_encode|raw }};
 const categories = {{ categories|json_encode|raw }};
 const cashBooks = {{ cash_books is defined ? cash_books|json_encode|raw : '[]' }};
 
+// HTML escape function to prevent XSS
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 let fundSplitMode = false;
 let categorySplitMode = false;
 let cashbookSplitMode = false;
@@ -405,7 +413,7 @@ function addFundEntry() {
         <select name="fund_entries[${idx}][fund_id]" required
                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             <option value="">Select fund</option>
-            ${funds.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+            ${funds.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}
         </select>
         <div class="relative w-32">
             <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
@@ -442,7 +450,7 @@ function addCategoryEntry() {
         <select name="category_entries[${idx}][operational_category_id]" required
                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             <option value="">Select category</option>
-            ${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+            ${categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
         <div class="relative w-32">
             <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
@@ -479,7 +487,7 @@ function addCashbookEntry() {
         <select name="cashbook_entries[${idx}][cash_book_id]" required
                 class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             <option value="">Select cashbook</option>
-            ${cashBooks.map(cb => `<option value="${cb.id}">${cb.name}</option>`).join('')}
+            ${cashBooks.map(cb => `<option value="${cb.id}">${escapeHtml(cb.name)}</option>`).join('')}
         </select>
         <div class="relative w-32">
             <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
@@ -611,12 +619,12 @@ function renderDonorResults(results) {
         donorDropdown.innerHTML = '<div class="px-3 py-2 text-sm text-gray-500">No donors found</div>';
     } else {
         donorDropdown.innerHTML = results.map(d => `
-            <div class="donor-option px-3 py-2 hover:bg-gray-100 cursor-pointer" data-id="${d.id}" data-name="${d.name.replace(/"/g, '&quot;')}">
+            <div class="donor-option px-3 py-2 hover:bg-gray-100 cursor-pointer" data-id="${d.id}" data-name="${escapeHtml(d.name)}">
                 <div class="text-sm font-medium text-gray-900">
-                    ${d.name}
+                    ${escapeHtml(d.name)}
                     ${d.has_active_declaration ? '<span class="text-green-600 ml-1">✓</span>' : ''}
                 </div>
-                ${d.notes ? `<div class="text-xs text-gray-500">${truncate(d.notes, 60)}</div>` : ''}
+                ${d.notes ? `<div class="text-xs text-gray-500">${escapeHtml(truncate(d.notes, 60))}</div>` : ''}
             </div>
         `).join('');
     }

@@ -472,7 +472,7 @@ class UserController extends BaseController
         $auditService = $this->get(AuditService::class);
         
         // Invalidate charity session for this user
-        $sessionManager->invalidateCharitySessionsForUser($targetUserId, $charityId);
+        $sessionManager->invalidateCharitySession($targetUserId, $charityId);
         
         $auditService->log($charityId, $userId, 'user_session_revoked', 'charity_user', $targetUserId);
         

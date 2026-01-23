@@ -62,11 +62,14 @@ class SessionManager
     }
 
     /**
-     * Validate the current session
+     * Validate a session
+     *
+     * @param string|null $token Optional token to validate. If null, reads from cookie.
      */
-    public function validate(): ?Session
+    public function validate(?string $token = null): ?Session
     {
-        $token = $_COOKIE[self::COOKIE_NAME] ?? null;
+        // Use provided token or fall back to cookie
+        $token = $token ?? ($_COOKIE[self::COOKIE_NAME] ?? null);
         if (!$token) {
             return null;
         }
@@ -74,7 +77,7 @@ class SessionManager
         $tokenHash = hash('sha512', $token);
 
         $row = $this->db->queryOne(
-            "SELECT s.*, u.display_name, u.is_super_admin 
+            "SELECT s.*, u.display_name, u.is_super_admin
              FROM sessions s
              JOIN users u ON u.id = s.user_id
              WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.is_active = TRUE",
@@ -82,7 +85,10 @@ class SessionManager
         );
 
         if (!$row) {
-            $this->clearCookie();
+            // Only clear cookie if we were validating from cookie
+            if ($token === ($_COOKIE[self::COOKIE_NAME] ?? null)) {
+                $this->clearCookie();
+            }
             return null;
         }
 
