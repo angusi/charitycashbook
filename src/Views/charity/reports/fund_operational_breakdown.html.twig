@@ -13,6 +13,10 @@
 
 {% include 'components/report_date_picker.html.twig' %}
 
+{% set label_col_width = '260px' %}
+{% set fund_col_width = '140px' %}
+{% set total_col_width = '140px' %}
+
 <!-- Report -->
 <div class="bg-white rounded-lg shadow overflow-x-auto" id="report-content">
     <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
@@ -32,6 +36,13 @@
         <div class="mb-8">
             <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-500 pb-2 mb-4">OPENING BALANCES</h3>
             <table class="w-full min-w-max">
+                <colgroup>
+                    <col style="width: {{ label_col_width }};">
+                    {% for fund in report.funds %}
+                    <col style="width: {{ fund_col_width }};">
+                    {% endfor %}
+                    <col style="width: {{ total_col_width }};">
+                </colgroup>
                 <thead>
                     <tr class="text-sm text-gray-500">
                         <th class="text-left pb-2 pr-4 min-w-[250px]"></th>
@@ -57,6 +68,13 @@
         <div class="mb-8">
             <h3 class="text-lg font-bold text-gray-900 border-b-2 border-green-500 pb-2 mb-4">RECEIPTS</h3>
             <table class="w-full min-w-max">
+                <colgroup>
+                    <col style="width: {{ label_col_width }};">
+                    {% for fund in report.funds %}
+                    <col style="width: {{ fund_col_width }};">
+                    {% endfor %}
+                    <col style="width: {{ total_col_width }};">
+                </colgroup>
                 <thead>
                     <tr class="text-sm text-gray-500">
                         <th class="text-left pb-2 pr-4 min-w-[250px]">Operational Category</th>
@@ -108,6 +126,13 @@
         <div class="mb-8">
             <h3 class="text-lg font-bold text-gray-900 border-b-2 border-red-500 pb-2 mb-4">PAYMENTS</h3>
             <table class="w-full min-w-max">
+                <colgroup>
+                    <col style="width: {{ label_col_width }};">
+                    {% for fund in report.funds %}
+                    <col style="width: {{ fund_col_width }};">
+                    {% endfor %}
+                    <col style="width: {{ total_col_width }};">
+                </colgroup>
                 <thead>
                     <tr class="text-sm text-gray-500">
                         <th class="text-left pb-2 pr-4 min-w-[250px]">Operational Category</th>
@@ -155,9 +180,76 @@
             </table>
         </div>
 
+        <!-- Transfers Section -->
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-blue-500 pb-2 mb-4">TRANSFERS</h3>
+            <table class="w-full min-w-max">
+                <colgroup>
+                    <col style="width: {{ label_col_width }};">
+                    {% for fund in report.funds %}
+                    <col style="width: {{ fund_col_width }};">
+                    {% endfor %}
+                    <col style="width: {{ total_col_width }};">
+                </colgroup>
+                <tbody>
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4 min-w-[250px]">Transfers In</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2 min-w-[100px]">
+                            {% if report.fund_totals[fund.id].transfers_in > 0 %}
+                            &pound;{{ report.fund_totals[fund.id].transfers_in|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4 min-w-[100px]">
+                            &pound;{{ report.grand_totals.transfers_in|number_format(2) }}
+                        </td>
+                    </tr>
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 text-sm text-gray-900 pr-4">Transfers Out</td>
+                        {% for fund in report.funds %}
+                        <td class="py-2 text-sm text-right text-gray-900 px-2">
+                            {% if report.fund_totals[fund.id].transfers_out > 0 %}
+                            &pound;{{ report.fund_totals[fund.id].transfers_out|number_format(2) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-medium text-gray-900 pl-4">
+                            &pound;{{ report.grand_totals.transfers_out|number_format(2) }}
+                        </td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="bg-blue-50">
+                        <td class="py-2 text-sm font-bold text-gray-900 pr-4">Net Transfers</td>
+                        {% for fund in report.funds %}
+                        {% set net_transfer = report.fund_totals[fund.id].transfers_in - report.fund_totals[fund.id].transfers_out %}
+                        <td class="py-2 text-sm text-right font-bold px-2 text-blue-700">
+                            &pound;{{ net_transfer|number_format(2) }}
+                        </td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-blue-700 pl-4">
+                            &pound;{{ (report.grand_totals.transfers_in - report.grand_totals.transfers_out)|number_format(2) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
         <!-- Closing Balances -->
         <div class="bg-blue-50 rounded-lg p-4">
             <table class="w-full min-w-max">
+                <colgroup>
+                    <col style="width: {{ label_col_width }};">
+                    {% for fund in report.funds %}
+                    <col style="width: {{ fund_col_width }};">
+                    {% endfor %}
+                    <col style="width: {{ total_col_width }};">
+                </colgroup>
                 <thead>
                     <tr class="text-sm text-gray-500">
                         <th class="text-left pb-2 pr-4 min-w-[250px]"></th>
@@ -171,12 +263,12 @@
                     <tr>
                         <td class="py-1 text-sm font-bold text-gray-900 pr-4">Net Movement</td>
                         {% for fund in report.funds %}
-                        {% set net = report.fund_totals[fund.id].receipts - report.fund_totals[fund.id].payments %}
+                        {% set net = report.fund_totals[fund.id].receipts - report.fund_totals[fund.id].payments + report.fund_totals[fund.id].transfers_in - report.fund_totals[fund.id].transfers_out %}
                         <td class="py-1 text-sm text-right font-bold px-2 {{ net >= 0 ? 'text-green-700' : 'text-red-700' }}">
                             &pound;{{ net|number_format(2) }}
                         </td>
                         {% endfor %}
-                        {% set total_net = report.grand_totals.receipts - report.grand_totals.payments %}
+                        {% set total_net = report.grand_totals.receipts - report.grand_totals.payments + report.grand_totals.transfers_in - report.grand_totals.transfers_out %}
                         <td class="py-1 text-sm text-right font-bold pl-4 {{ total_net >= 0 ? 'text-green-700' : 'text-red-700' }}">
                             &pound;{{ total_net|number_format(2) }}
                         </td>
