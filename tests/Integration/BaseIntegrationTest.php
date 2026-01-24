@@ -14,31 +14,40 @@ use Slim\Views\TwigMiddleware;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use CharityCashbook\Core\Container;
+use CharityCashbook\Core\Database;
 use CharityCashbook\Core\DatabaseInterface;
 use CharityCashbook\Core\Logger;
 
 /**
  * Base class for integration tests.
  * 
- * Uses an in-memory SQLite database for isolation and speed.
- * Each test class gets a fresh database, and each test runs in a transaction
- * that is rolled back for isolation.
+ * Requires MariaDB - set DB_HOST, DB_NAME, DB_USER, DB_PASS env vars.
+ * Each test runs in a transaction that is rolled back for isolation.
  */
 abstract class BaseIntegrationTest extends TestCase
 {
     protected static ?Container $container = null;
     protected static ?App $app = null;
-    protected static ?SqliteTestDatabase $db = null;
-    
-    protected TestFixtures $fixtures;
+    protected static ?Database $db = null;
     
     /**
      * Set up the application once for all tests in this class
      */
     public static function setUpBeforeClass(): void
     {
-        // Create fresh SQLite database for this test class
-        self::$db = new SqliteTestDatabase();
+        if (!getenv('DB_HOST')) {
+            self::markTestSkipped('Integration tests require MariaDB. Set DB_HOST env var.');
+        }
+        
+        // Use the real Database class with test config
+        self::$db = new Database([
+            'host' => getenv('DB_HOST') ?: '127.0.0.1',
+            'port' => (int) (getenv('DB_PORT') ?: 3306),
+            'database' => getenv('DB_NAME') ?: 'charitycashbook_test',
+            'username' => getenv('DB_USER') ?: 'root',
+            'password' => getenv('DB_PASS') ?: '',
+            'charset' => 'utf8mb4',
+        ]);
         
         // Load config (for paths, not database)
         $config = self::loadTestConfig();
@@ -61,28 +70,34 @@ abstract class BaseIntegrationTest extends TestCase
     }
     
     /**
-     * Set up each test with a transaction
+     * Set up each test - no transaction wrapping since services use their own transactions
      */
     protected function setUp(): void
     {
         parent::setUp();
-        
-        // Start a transaction that will be rolled back after the test
-        self::$db->beginTransaction();
-        
-        // Create fixtures helper
-        $this->fixtures = new TestFixtures(self::$db);
     }
     
     /**
-     * Roll back transaction after each test
+     * Clean up test data after each test
      */
     protected function tearDown(): void
     {
-        // Roll back all changes made during the test
-        if (self::$db->inTransaction()) {
-            self::$db->rollBack();
-        }
+        // Clean up test data in reverse dependency order
+        self::$db->execute("DELETE FROM transaction_audit WHERE 1=1");
+        self::$db->execute("DELETE FROM giftaid_claim_items WHERE 1=1");
+        self::$db->execute("DELETE FROM transaction_cashbook_entries WHERE 1=1");
+        self::$db->execute("DELETE FROM transaction_category_entries WHERE 1=1");
+        self::$db->execute("DELETE FROM transaction_fund_entries WHERE 1=1");
+        self::$db->execute("DELETE FROM transactions WHERE 1=1");
+        self::$db->execute("DELETE FROM declarations WHERE 1=1");
+        self::$db->execute("DELETE FROM donors WHERE 1=1");
+        self::$db->execute("DELETE FROM giftaid_claims WHERE 1=1");
+        self::$db->execute("DELETE FROM operational_categories WHERE 1=1");
+        self::$db->execute("DELETE FROM reporting_categories WHERE 1=1");
+        self::$db->execute("DELETE FROM funds WHERE 1=1");
+        self::$db->execute("DELETE FROM charity_users WHERE 1=1");
+        self::$db->execute("DELETE FROM charities WHERE 1=1");
+        self::$db->execute("DELETE FROM users WHERE 1=1");
         
         parent::tearDown();
     }
@@ -92,7 +107,6 @@ abstract class BaseIntegrationTest extends TestCase
      */
     protected static function loadTestConfig(): array
     {
-        // Use a minimal config for testing - don't require config.php
         $projectRoot = dirname(__DIR__, 2);
         
         return [
@@ -118,7 +132,7 @@ abstract class BaseIntegrationTest extends TestCase
         
         $container->set('config', fn() => $config);
         
-        // Use provided SQLite database
+        // Use the real Database instance
         $container->set(DatabaseInterface::class, fn() => $db);
         
         // Logger (use temp directory for tests)
@@ -182,6 +196,14 @@ abstract class BaseIntegrationTest extends TestCase
         
         $container->set(\CharityCashbook\Charity\CashBookService::class, fn($c) => 
             new \CharityCashbook\Charity\CashBookService($c->get(DatabaseInterface::class))
+        );
+        
+        $container->set(\CharityCashbook\Charity\GiftAidService::class, fn($c) => 
+            new \CharityCashbook\Charity\GiftAidService(
+                $c->get(DatabaseInterface::class),
+                $c->get(Logger::class),
+                $c->get(\CharityCashbook\Charity\AuditService::class)
+            )
         );
         
         return $container;
