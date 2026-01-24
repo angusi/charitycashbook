@@ -63,15 +63,15 @@
             </div>
         </div>
 
-        <!-- Donations -->
+        <!-- Receipts -->
         <div class="bg-white rounded-lg shadow">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-medium text-gray-900">Donations</h2>
+                <h2 class="text-lg font-medium text-gray-900">Receipts</h2>
             </div>
             <div class="divide-y divide-gray-200">
                 {% if donations is empty %}
                     <div class="px-6 py-8 text-center text-gray-500">
-                        No donations recorded
+                        No receipts recorded
                     </div>
                 {% else %}
                     {% for donation in donations %}
@@ -79,7 +79,7 @@
                             <div class="flex justify-between">
                                 <div>
                                     <p class="text-sm font-medium text-gray-900">
-                                        {{ donation.description }}{% if donation.reference %} <span class="text-gray-500">({{ donation.reference }})</span>{% endif %}
+                                        <a href="/charity/{{ charity.id }}/transactions/{{ donation.id }}" class="hover:text-blue-600">{{ donation.description }}</a>{% if donation.reference %} <span class="text-gray-500">({{ donation.reference }})</span>{% endif %}
                                     </p>
                                     <p class="text-xs text-gray-500">{{ donation.transaction_date }} · {{ donation.fund_name }}</p>
                                 </div>

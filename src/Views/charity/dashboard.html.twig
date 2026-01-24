@@ -122,7 +122,9 @@
                     <div class="px-6 py-4">
                         <div class="flex justify-between">
                             <div>
-                                <p class="text-sm font-medium text-gray-900">{{ t.description }}</p>
+                                <p class="text-sm font-medium text-gray-900">
+                                    <a href="/charity/{{ charity.id }}/transactions/{{ t.id }}" class="hover:text-blue-600">{{ t.description }}</a>
+                                </p>
                                 <p class="text-xs text-gray-500">
                                     {{ t.transaction_date }} ·
                                     {% if t.fund_entry_count > 1 %}

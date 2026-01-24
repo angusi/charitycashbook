@@ -87,7 +87,7 @@ class GiftAidService
     }
 
     /**
-     * Get eligible unclaimed transactions
+     * Get eligible unclaimed transactions (only those with confirmed giftaid_amount)
      */
     public function getEligibleTransactions(int $charityId, bool $unclaimedOnly = false): array
     {
@@ -96,7 +96,8 @@ class GiftAidService
                 LEFT JOIN donors d ON d.id = t.donor_id
                 WHERE t.charity_id = ?
                 AND t.is_deleted = FALSE
-                AND t.giftaid_status IN ('eligible', 'gasds')";
+                AND t.giftaid_status IN ('eligible', 'gasds')
+                AND t.giftaid_amount IS NOT NULL";
         
         $params = [$charityId];
         
@@ -115,12 +116,13 @@ class GiftAidService
     public function calculateClaimableAmount(int $charityId): float
     {
         $result = $this->db->queryOne(
-            "SELECT COALESCE(SUM(amount), 0) as total
+            "SELECT COALESCE(SUM(giftaid_amount), 0) as total
              FROM transactions
              WHERE charity_id = ?
              AND is_deleted = FALSE
              AND giftaid_status IN ('eligible', 'gasds')
-             AND giftaid_claim_id IS NULL",
+             AND giftaid_claim_id IS NULL
+             AND giftaid_amount IS NOT NULL",
             [$charityId]
         );
         
@@ -136,11 +138,12 @@ class GiftAidService
         $fyEnd = ((int)$financialYear + 1) . '-04-05';
         
         $result = $this->db->queryOne(
-            "SELECT COALESCE(SUM(amount), 0) as total
+            "SELECT COALESCE(SUM(giftaid_amount), 0) as total
              FROM transactions
              WHERE charity_id = ?
              AND is_deleted = FALSE
              AND giftaid_status = 'gasds'
+             AND giftaid_amount IS NOT NULL
              AND transaction_date >= ?
              AND transaction_date <= ?",
             [$charityId, $fyStart, $fyEnd]
@@ -171,11 +174,12 @@ class GiftAidService
     {
         $result = $this->db->queryOne(
             "SELECT 
-                COALESCE(SUM(CASE WHEN giftaid_status = 'eligible' THEN amount ELSE 0 END), 0) as eligible_total,
-                COALESCE(SUM(CASE WHEN giftaid_status = 'claimed' THEN amount ELSE 0 END), 0) as claimed_total,
-                COALESCE(SUM(CASE WHEN giftaid_status = 'gasds' THEN amount ELSE 0 END), 0) as gasds_total,
-                COUNT(CASE WHEN giftaid_status = 'eligible' THEN 1 END) as eligible_count,
-                COUNT(CASE WHEN giftaid_status = 'claimed' THEN 1 END) as claimed_count
+                COALESCE(SUM(CASE WHEN giftaid_status = 'eligible' AND giftaid_amount IS NOT NULL THEN giftaid_amount ELSE 0 END), 0) as eligible_total,
+                COALESCE(SUM(CASE WHEN giftaid_status = 'claimed' THEN giftaid_amount ELSE 0 END), 0) as claimed_total,
+                COALESCE(SUM(CASE WHEN giftaid_status = 'gasds' AND giftaid_amount IS NOT NULL THEN giftaid_amount ELSE 0 END), 0) as gasds_total,
+                COUNT(CASE WHEN giftaid_status = 'eligible' AND giftaid_amount IS NOT NULL THEN 1 END) as eligible_count,
+                COUNT(CASE WHEN giftaid_status = 'claimed' THEN 1 END) as claimed_count,
+                COUNT(CASE WHEN giftaid_status IN ('eligible', 'gasds') AND giftaid_amount IS NULL THEN 1 END) as needs_review_count
              FROM transactions
              WHERE charity_id = ?
              AND is_deleted = FALSE
@@ -193,6 +197,7 @@ class GiftAidService
             'gasds_total' => (float) $result['gasds_total'],
             'eligible_count' => (int) $result['eligible_count'],
             'claimed_count' => (int) $result['claimed_count'],
+            'needs_review_count' => (int) $result['needs_review_count'],
         ];
     }
 
@@ -203,15 +208,16 @@ class GiftAidService
     {
         $result = $this->db->queryOne(
             "SELECT 
-                COALESCE(SUM(CASE WHEN giftaid_status = 'eligible' THEN amount ELSE 0 END), 0) as standard_donations,
-                COALESCE(SUM(CASE WHEN giftaid_status = 'gasds' THEN amount ELSE 0 END), 0) as gasds_donations,
-                COUNT(CASE WHEN giftaid_status = 'eligible' THEN 1 END) as standard_count,
-                COUNT(CASE WHEN giftaid_status = 'gasds' THEN 1 END) as gasds_count
+                COALESCE(SUM(CASE WHEN giftaid_status = 'eligible' AND giftaid_amount IS NOT NULL THEN giftaid_amount ELSE 0 END), 0) as standard_donations,
+                COALESCE(SUM(CASE WHEN giftaid_status = 'gasds' AND giftaid_amount IS NOT NULL THEN giftaid_amount ELSE 0 END), 0) as gasds_donations,
+                COUNT(CASE WHEN giftaid_status = 'eligible' AND giftaid_amount IS NOT NULL THEN 1 END) as standard_count,
+                COUNT(CASE WHEN giftaid_status = 'gasds' AND giftaid_amount IS NOT NULL THEN 1 END) as gasds_count
              FROM transactions
              WHERE charity_id = ?
              AND is_deleted = FALSE
              AND giftaid_status IN ('eligible', 'gasds')
              AND giftaid_claim_id IS NULL
+             AND giftaid_amount IS NOT NULL
              AND transaction_date >= ?
              AND transaction_date <= ?",
             [$charityId, $dateFrom, $dateTo]
@@ -299,6 +305,267 @@ class GiftAidService
     }
 
     /**
+     * Get transactions needing Gift Aid amount review (eligible but amount not confirmed)
+     */
+    public function getTransactionsNeedingAmountReview(int $charityId, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        $sql = "SELECT t.*, d.name as donor_name
+                FROM transactions t
+                LEFT JOIN donors d ON d.id = t.donor_id
+                WHERE t.charity_id = ?
+                AND t.is_deleted = FALSE
+                AND t.giftaid_status IN ('eligible', 'gasds')
+                AND t.giftaid_amount IS NULL";
+        
+        $params = [$charityId];
+
+        if ($dateFrom) {
+            $sql .= " AND t.transaction_date >= ?";
+            $params[] = $dateFrom;
+        }
+        if ($dateTo) {
+            $sql .= " AND t.transaction_date <= ?";
+            $params[] = $dateTo;
+        }
+
+        $sql .= " ORDER BY t.transaction_date DESC";
+
+        $transactions = $this->db->query($sql, $params);
+
+        // Calculate eligible_amount from category entries for each transaction
+        foreach ($transactions as &$tx) {
+            $tx['eligible_amount'] = $this->calculateEligibleAmountFromCategories($tx['id'], $charityId);
+        }
+
+        return $transactions;
+    }
+
+    /**
+     * Get transactions with incomplete Gift Aid setup (intent=yes but missing donor/declaration)
+     */
+    public function getTransactionsWithIncompleteSetup(int $charityId, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        $sql = "SELECT t.*, d.name as donor_name
+                FROM transactions t
+                LEFT JOIN donors d ON d.id = t.donor_id
+                WHERE t.charity_id = ?
+                AND t.is_deleted = FALSE
+                AND t.giftaid_status IN ('pending_donor', 'pending_declaration')";
+        
+        $params = [$charityId];
+
+        if ($dateFrom) {
+            $sql .= " AND t.transaction_date >= ?";
+            $params[] = $dateFrom;
+        }
+        if ($dateTo) {
+            $sql .= " AND t.transaction_date <= ?";
+            $params[] = $dateTo;
+        }
+
+        $sql .= " ORDER BY t.transaction_date DESC";
+
+        return $this->db->query($sql, $params);
+    }
+
+    /**
+     * Get all transactions needing review (both incomplete setup and amount confirmation)
+     * @deprecated Use getTransactionsNeedingAmountReview() and getTransactionsWithIncompleteSetup() instead
+     */
+    public function getTransactionsNeedingReview(int $charityId, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        return $this->getTransactionsNeedingAmountReview($charityId, $dateFrom, $dateTo);
+    }
+
+    /**
+     * Calculate the eligible amount based on category entries with giftaid_eligible_default
+     */
+    private function calculateEligibleAmountFromCategories(int $transactionId, int $charityId): float
+    {
+        $sql = "SELECT SUM(tce.amount) as eligible_total
+                FROM transaction_category_entries tce
+                JOIN operational_categories oc ON oc.id = tce.operational_category_id
+                WHERE tce.transaction_id = ?
+                AND oc.giftaid_eligible_default = 1";
+        
+        $result = $this->db->queryOne($sql, [$transactionId]);
+        
+        return (float) ($result['eligible_total'] ?? 0);
+    }
+
+    /**
+     * Confirm Gift Aid amount for a transaction
+     */
+    public function confirmGiftAidAmount(int $transactionId, int $charityId, float $giftaidAmount, int $userId): void
+    {
+        $transaction = $this->db->queryOne(
+            "SELECT * FROM transactions WHERE id = ? AND charity_id = ? AND is_deleted = FALSE",
+            [$transactionId, $charityId]
+        );
+
+        if (!$transaction) {
+            throw new ValidationException(['transaction' => 'Transaction not found']);
+        }
+
+        if (!in_array($transaction['giftaid_status'], ['eligible', 'gasds'])) {
+            throw new ValidationException(['transaction' => 'Transaction is not eligible for Gift Aid']);
+        }
+
+        if ($giftaidAmount < 0) {
+            throw new ValidationException(['giftaid_amount' => 'Gift Aid amount cannot be negative']);
+        }
+
+        if ($giftaidAmount > (float)$transaction['amount']) {
+            throw new ValidationException(['giftaid_amount' => 'Gift Aid amount cannot exceed transaction amount']);
+        }
+
+        $this->db->update(
+            'transactions',
+            ['giftaid_amount' => $giftaidAmount, 'updated_by_user_id' => $userId],
+            'id = ? AND charity_id = ?',
+            [$transactionId, $charityId]
+        );
+
+        $this->auditService->log($charityId, $userId, 'giftaid_amount_confirmed', 'transaction', $transactionId, [
+            'giftaid_amount' => $giftaidAmount,
+            'transaction_amount' => $transaction['amount'],
+        ]);
+    }
+
+    /**
+     * Get pending corrections for a charity
+     */
+    public function getPendingCorrections(int $charityId): array
+    {
+        return $this->db->query(
+            "SELECT gc.*, t.description as transaction_description, t.transaction_date,
+                    d.name as donor_name
+             FROM giftaid_corrections gc
+             JOIN transactions t ON t.id = gc.original_transaction_id
+             LEFT JOIN donors d ON d.id = t.donor_id
+             WHERE gc.charity_id = ?
+             AND gc.applied_to_claim_id IS NULL
+             ORDER BY gc.created_at DESC",
+            [$charityId]
+        );
+    }
+
+    /**
+     * Create a Gift Aid correction
+     */
+    public function createCorrection(
+        int $charityId,
+        int $transactionId,
+        float $correctedAmount,
+        string $reason,
+        int $userId
+    ): int {
+        // Get the transaction and its claim
+        $transaction = $this->db->queryOne(
+            "SELECT t.*, gc.id as claim_id
+             FROM transactions t
+             JOIN giftaid_claims gc ON gc.id = t.giftaid_claim_id
+             WHERE t.id = ? AND t.charity_id = ? AND t.giftaid_status = 'claimed'",
+            [$transactionId, $charityId]
+        );
+
+        if (!$transaction) {
+            throw new ValidationException(['transaction' => 'Transaction not found or not claimed']);
+        }
+
+        if ($correctedAmount < 0) {
+            throw new ValidationException(['corrected_amount' => 'Corrected amount cannot be negative']);
+        }
+
+        if ($correctedAmount > (float)$transaction['amount']) {
+            throw new ValidationException(['corrected_amount' => 'Corrected amount cannot exceed transaction amount']);
+        }
+
+        $originalAmount = (float)$transaction['giftaid_amount'];
+        $adjustment = $correctedAmount - $originalAmount;
+
+        // Don't create a correction if there's no change
+        if (abs($adjustment) < 0.01) {
+            throw new ValidationException(['corrected_amount' => 'Corrected amount is the same as original']);
+        }
+
+        $correctionId = $this->db->insert('giftaid_corrections', [
+            'charity_id' => $charityId,
+            'original_transaction_id' => $transactionId,
+            'original_claim_id' => $transaction['claim_id'],
+            'original_amount' => $originalAmount,
+            'corrected_amount' => $correctedAmount,
+            'adjustment' => $adjustment,
+            'reason' => $reason,
+            'created_by_user_id' => $userId,
+        ]);
+
+        $this->auditService->log($charityId, $userId, 'giftaid_correction_created', 'giftaid_correction', $correctionId, [
+            'transaction_id' => $transactionId,
+            'original_amount' => $originalAmount,
+            'corrected_amount' => $correctedAmount,
+            'adjustment' => $adjustment,
+            'reason' => $reason,
+        ]);
+
+        return $correctionId;
+    }
+
+    /**
+     * Get overclaim total (negative adjustments) for pending corrections
+     */
+    public function getPendingOverclaimTotal(int $charityId): float
+    {
+        $result = $this->db->queryValue(
+            "SELECT COALESCE(SUM(ABS(adjustment)), 0)
+             FROM giftaid_corrections
+             WHERE charity_id = ?
+             AND applied_to_claim_id IS NULL
+             AND adjustment < 0",
+            [$charityId]
+        );
+        return (float) $result;
+    }
+
+    /**
+     * Get underclaim corrections (positive adjustments) for pending corrections
+     * Returns as array since these become donation rows
+     */
+    public function getPendingUnderclaims(int $charityId): array
+    {
+        return $this->db->query(
+            "SELECT gc.*, t.transaction_date, d.name as donor_name, 
+                    d.address_line1, d.postcode as address_postcode
+             FROM giftaid_corrections gc
+             JOIN transactions t ON t.id = gc.original_transaction_id
+             LEFT JOIN donors d ON d.id = t.donor_id
+             WHERE gc.charity_id = ?
+             AND gc.applied_to_claim_id IS NULL
+             AND gc.adjustment > 0
+             ORDER BY t.transaction_date",
+            [$charityId]
+        );
+    }
+
+    /**
+     * Get corrections applied to a specific claim
+     */
+    public function getCorrectionsForClaim(int $claimId, int $charityId): array
+    {
+        return $this->db->query(
+            "SELECT gc.*, t.transaction_date, d.name as donor_name,
+                    d.address_line1, d.postcode as address_postcode
+             FROM giftaid_corrections gc
+             JOIN transactions t ON t.id = gc.original_transaction_id
+             LEFT JOIN donors d ON d.id = t.donor_id
+             WHERE gc.applied_to_claim_id = ?
+             AND gc.charity_id = ?
+             ORDER BY t.transaction_date",
+            [$claimId, $charityId]
+        );
+    }
+
+    /**
      * Create a new claim (draft)
      */
     public function createClaim(
@@ -308,30 +575,31 @@ class GiftAidService
         string $periodEnd,
         array $transactionIds
     ): int {
-        // Verify all transactions are eligible
+        // Verify all transactions are eligible and have confirmed amounts
         $transactions = $this->db->query(
-            "SELECT id, amount, giftaid_status 
+            "SELECT id, amount, giftaid_amount, giftaid_status 
              FROM transactions 
              WHERE id IN (" . implode(',', array_fill(0, count($transactionIds), '?')) . ")
              AND charity_id = ?
              AND is_deleted = FALSE
              AND giftaid_status IN ('eligible', 'gasds')
-             AND giftaid_claim_id IS NULL",
+             AND giftaid_claim_id IS NULL
+             AND giftaid_amount IS NOT NULL",
             array_merge($transactionIds, [$charityId])
         );
 
         if (count($transactions) !== count($transactionIds)) {
-            throw new ValidationException(['transactions' => 'Some transactions are not eligible for claiming']);
+            throw new ValidationException(['transactions' => 'Some transactions are not eligible for claiming or need Gift Aid amount confirmation']);
         }
 
-        // Calculate totals
+        // Calculate totals using giftaid_amount
         $standardTotal = 0;
         $gasdsTotal = 0;
         foreach ($transactions as $t) {
             if ($t['giftaid_status'] === 'gasds') {
-                $gasdsTotal += (float) $t['amount'];
+                $gasdsTotal += (float) $t['giftaid_amount'];
             } else {
-                $standardTotal += (float) $t['amount'];
+                $standardTotal += (float) $t['giftaid_amount'];
             }
         }
 

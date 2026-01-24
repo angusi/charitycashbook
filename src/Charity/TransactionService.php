@@ -369,12 +369,16 @@ class TransactionService
 
         // Gift Aid only applies to receipts with categories
         $giftaidStatus = 'not_applicable';
+        $giftaidAmount = null;
         if ($transactionType === 'receipt' && !empty($categoryEntries)) {
             $firstCategory = $this->categoryService->getOperationalCategory(
                 $categoryEntries[0]['operational_category_id'],
                 $charityId
             );
             $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+            
+            // Determine giftaid_amount
+            $giftaidAmount = $this->determineGiftAidAmount($data, $categoryEntries, $giftaidStatus, $charityId);
         }
 
         // Normalize fund entries
@@ -420,10 +424,14 @@ class TransactionService
                 $insertData['donor_id'] = $data['donor_id'] ?? null;
                 $insertData['has_oneoff_declaration'] = $data['has_oneoff_declaration'] ?? false;
                 $insertData['giftaid_status'] = $giftaidStatus;
+                $insertData['giftaid_amount'] = $giftaidAmount;
+                $insertData['giftaid_eligibility_override'] = $data['giftaid_eligibility_override'] ?? null;
             } else {
                 $insertData['donor_id'] = null;
                 $insertData['has_oneoff_declaration'] = false;
                 $insertData['giftaid_status'] = 'not_applicable';
+                $insertData['giftaid_amount'] = null;
+                $insertData['giftaid_eligibility_override'] = null;
             }
 
             $id = $this->db->insert('transactions', $insertData);
@@ -487,9 +495,10 @@ class TransactionService
             throw new ValidationException(['id' => 'Transaction not found']);
         }
 
-        // Cannot edit if claimed
+        // If claimed, only allow safe edits (description, reference)
         if ($existing['giftaid_status'] === 'claimed') {
-            throw new ValidationException(['giftaid' => 'Cannot edit a claimed transaction']);
+            $this->updateClaimedTransaction($id, $charityId, $userId, $data, $existing);
+            return;
         }
 
         // Determine transaction type
@@ -512,12 +521,19 @@ class TransactionService
 
         // Gift Aid only applies to receipts with categories
         $giftaidStatus = 'not_applicable';
+        $giftaidAmount = null;
         if ($transactionType === 'receipt' && !empty($categoryEntries)) {
             $firstCategory = $this->categoryService->getOperationalCategory(
                 $categoryEntries[0]['operational_category_id'],
                 $charityId
             );
             $giftaidStatus = $this->determineGiftAidStatus($data, $firstCategory, $charityId);
+            
+            // Determine giftaid_amount - check if eligibility changed
+            $eligibilityChanged = $this->hasEligibilityChanged($existing, $data, $giftaidStatus);
+            $giftaidAmount = $this->determineGiftAidAmountForUpdate(
+                $data, $categoryEntries, $giftaidStatus, $charityId, $existing, $eligibilityChanged
+            );
         }
 
         // Normalize entries
@@ -564,10 +580,14 @@ class TransactionService
                 $updateData['donor_id'] = $data['donor_id'] ?? null;
                 $updateData['has_oneoff_declaration'] = $data['has_oneoff_declaration'] ?? false;
                 $updateData['giftaid_status'] = $giftaidStatus;
+                $updateData['giftaid_amount'] = $giftaidAmount;
+                $updateData['giftaid_eligibility_override'] = $data['giftaid_eligibility_override'] ?? null;
             } else {
                 $updateData['donor_id'] = null;
                 $updateData['has_oneoff_declaration'] = false;
                 $updateData['giftaid_status'] = 'not_applicable';
+                $updateData['giftaid_amount'] = null;
+                $updateData['giftaid_eligibility_override'] = null;
             }
 
             $this->db->update('transactions', $updateData, 'id = ? AND charity_id = ?', [$id, $charityId]);
@@ -993,11 +1013,49 @@ class TransactionService
             return 'not_applicable';
         }
 
+        // Check if transaction is before charity's Gift Aid eligibility date
+        $charity = $this->db->queryOne(
+            "SELECT giftaid_eligible_from_date FROM charities WHERE id = ?",
+            [$charityId]
+        );
+        if (!empty($charity['giftaid_eligible_from_date']) && $data['transaction_date'] < $charity['giftaid_eligible_from_date']) {
+            return 'not_applicable';
+        }
+
+        // Check for explicit eligibility override
+        $override = $data['giftaid_eligibility_override'] ?? null;
+        
+        // If explicitly excluded, mark as excluded
+        if ($override === 'not_eligible') {
+            return 'excluded';
+        }
+
         // If explicitly marked as GASDS
         if (!empty($data['is_gasds'])) {
             return 'gasds';
         }
 
+        // If user said "Yes" to Gift Aid (override = 'eligible'), check what's missing
+        if ($override === 'eligible') {
+            // Check if has one-off declaration
+            if (!empty($data['has_oneoff_declaration'])) {
+                return 'eligible';
+            }
+            
+            // Check if donor is set
+            if (empty($data['donor_id'])) {
+                return 'pending_donor';
+            }
+            
+            // Check for valid declaration
+            if ($this->hasValidDeclaration($data['donor_id'], $data['transaction_date'])) {
+                return 'eligible';
+            }
+            
+            return 'pending_declaration';
+        }
+
+        // No override - use auto-determination logic
         // If has one-off declaration
         if (!empty($data['has_oneoff_declaration'])) {
             return 'eligible';
@@ -1030,6 +1088,205 @@ class TransactionService
         );
 
         return $count > 0;
+    }
+
+    /**
+     * Determine the Gift Aid amount for a new transaction
+     * Returns NULL if amount needs review, or the confirmed amount
+     */
+    private function determineGiftAidAmount(array $data, array $categoryEntries, string $giftaidStatus, int $charityId): ?float
+    {
+        // Not applicable - no GA amount
+        if ($giftaidStatus === 'not_applicable') {
+            return null;
+        }
+        
+        // Excluded by user - no GA amount
+        if ($giftaidStatus === 'excluded') {
+            return null;
+        }
+
+        $amount = (float) $data['amount'];
+
+        // If user explicitly provided a giftaid_amount, validate and use it
+        // This applies even for pending statuses - we store the intended amount
+        if (isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '') {
+            $giftaidAmount = (float) $data['giftaid_amount'];
+            $this->validateGiftAidAmount($giftaidAmount, $amount);
+            return $giftaidAmount;
+        }
+        
+        // For pending statuses without explicit amount, keep null
+        if (in_array($giftaidStatus, ['pending_donor', 'pending_declaration', 'not_eligible'])) {
+            return null;
+        }
+
+        // Check if this is a "simple" case where we can auto-confirm
+        // Simple case: single category that is GA-eligible, or all categories are GA-eligible
+        if ($this->isSimpleGiftAidCase($categoryEntries, $charityId)) {
+            return $amount; // Full amount is claimable
+        }
+
+        // Complex case (mixed eligibility) - needs explicit confirmation
+        return null;
+    }
+
+    /**
+     * Determine Gift Aid amount for an update
+     */
+    private function determineGiftAidAmountForUpdate(
+        array $data,
+        array $categoryEntries,
+        string $giftaidStatus,
+        int $charityId,
+        array $existing,
+        bool $eligibilityChanged
+    ): ?float {
+        // Not applicable - no GA amount
+        if ($giftaidStatus === 'not_applicable') {
+            return null;
+        }
+        
+        // Excluded by user - no GA amount
+        if ($giftaidStatus === 'excluded') {
+            return null;
+        }
+
+        $amount = (float) $data['amount'];
+
+        // If user explicitly provided a giftaid_amount, validate and use it
+        // This applies even for pending statuses - we store the intended amount
+        if (isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '') {
+            $giftaidAmount = (float) $data['giftaid_amount'];
+            $this->validateGiftAidAmount($giftaidAmount, $amount);
+            return $giftaidAmount;
+        }
+        
+        // For pending statuses without explicit amount, keep null
+        if (in_array($giftaidStatus, ['pending_donor', 'pending_declaration', 'not_eligible'])) {
+            return null;
+        }
+
+        // If eligibility changed (e.g., donor added), reset to NULL for review
+        if ($eligibilityChanged) {
+            return null;
+        }
+
+        // If transaction amount changed and there was a previous giftaid_amount, 
+        // reset to NULL for review (user needs to confirm new amount)
+        if ($existing['giftaid_amount'] !== null && (float)$existing['amount'] !== $amount) {
+            return null;
+        }
+
+        // Preserve existing giftaid_amount if no relevant changes
+        return $existing['giftaid_amount'] !== null ? (float)$existing['giftaid_amount'] : null;
+    }
+
+    /**
+     * Check if eligibility-affecting fields changed
+     */
+    private function hasEligibilityChanged(array $existing, array $data, string $newGiftaidStatus): bool
+    {
+        // Status changed
+        if ($existing['giftaid_status'] !== $newGiftaidStatus) {
+            return true;
+        }
+
+        // Donor changed
+        $oldDonorId = $existing['donor_id'] ?? null;
+        $newDonorId = $data['donor_id'] ?? null;
+        if ($oldDonorId != $newDonorId) {
+            return true;
+        }
+
+        // Date changed (could affect declaration validity)
+        if ($existing['transaction_date'] !== $data['transaction_date']) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if this is a simple Gift Aid case (all categories eligible)
+     */
+    private function isSimpleGiftAidCase(array $categoryEntries, int $charityId): bool
+    {
+        if (empty($categoryEntries)) {
+            return false;
+        }
+
+        // Single category - simple if it's GA-eligible by default
+        if (count($categoryEntries) === 1) {
+            $category = $this->categoryService->getOperationalCategory(
+                $categoryEntries[0]['operational_category_id'],
+                $charityId
+            );
+            return !empty($category['giftaid_eligible_default']);
+        }
+
+        // Multiple categories - simple only if ALL are GA-eligible
+        foreach ($categoryEntries as $entry) {
+            $category = $this->categoryService->getOperationalCategory(
+                $entry['operational_category_id'],
+                $charityId
+            );
+            if (empty($category['giftaid_eligible_default'])) {
+                return false; // Mixed eligibility - not simple
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Validate giftaid_amount
+     */
+    private function validateGiftAidAmount(float $giftaidAmount, float $transactionAmount): void
+    {
+        if ($giftaidAmount < 0) {
+            throw new ValidationException(['giftaid_amount' => 'Gift Aid amount cannot be negative']);
+        }
+        if ($giftaidAmount > $transactionAmount) {
+            throw new ValidationException(['giftaid_amount' => 'Gift Aid amount cannot exceed transaction amount']);
+        }
+    }
+
+    /**
+     * Update only safe fields on a claimed transaction
+     */
+    private function updateClaimedTransaction(int $id, int $charityId, int $userId, array $data, array $existing): void
+    {
+        // Only allow description and reference changes
+        $updateData = [
+            'description' => $data['description'] ?? $existing['description'],
+            'reference' => $data['reference'] ?? $existing['reference'],
+            'updated_by_user_id' => $userId,
+        ];
+
+        // Check if trying to change restricted fields
+        $restrictedChanges = [];
+        if (isset($data['amount']) && (float)$data['amount'] !== (float)$existing['amount']) {
+            $restrictedChanges[] = 'amount';
+        }
+        if (isset($data['transaction_date']) && $data['transaction_date'] !== $existing['transaction_date']) {
+            $restrictedChanges[] = 'date';
+        }
+        if (isset($data['donor_id']) && ($data['donor_id'] ?? null) != $existing['donor_id']) {
+            $restrictedChanges[] = 'donor';
+        }
+        if (isset($data['giftaid_amount']) && (float)($data['giftaid_amount'] ?? 0) !== (float)$existing['giftaid_amount']) {
+            $restrictedChanges[] = 'Gift Aid amount';
+        }
+
+        if (!empty($restrictedChanges)) {
+            throw new ValidationException([
+                'giftaid' => 'Cannot change ' . implode(', ', $restrictedChanges) . 
+                    ' on a claimed transaction. To correct this claim, add a Gift Aid correction instead.'
+            ]);
+        }
+
+        $this->db->update('transactions', $updateData, 'id = ? AND charity_id = ?', [$id, $charityId]);
     }
 
     /**

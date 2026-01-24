@@ -217,6 +217,14 @@ return function (App $app) {
         // Gift Aid (requires giftaid module)
         $group->group('/giftaid', function (RouteCollectorProxy $giftaid) {
             $giftaid->get('', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':index');
+            $giftaid->get('/review', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':review')
+                ->add(new PermissionMiddleware('giftaid.manage_claims'));
+            $giftaid->post('/review', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':confirmAmounts')
+                ->add(new PermissionMiddleware('giftaid.manage_claims'));
+            $giftaid->get('/corrections/create', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':createCorrection')
+                ->add(new PermissionMiddleware('giftaid.manage_claims'));
+            $giftaid->post('/corrections', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':storeCorrection')
+                ->add(new PermissionMiddleware('giftaid.manage_claims'));
             $giftaid->get('/claims', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':claims');
             $giftaid->get('/claims/create', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':createClaim')
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));

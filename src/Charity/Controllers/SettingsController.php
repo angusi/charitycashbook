@@ -58,6 +58,7 @@ class SettingsController extends BaseController
                 'name' => trim($data['name']),
                 'registration_number' => $data['charity_number'] ?? null,
                 'hmrc_reference' => $data['hmrc_reference'] ?? null,
+                'giftaid_eligible_from_date' => !empty($data['giftaid_eligible_from_date']) ? $data['giftaid_eligible_from_date'] : null,
                 'address' => $data['address'] ?? null,
                 'year_end_day' => $yearEndDay,
                 'year_end_month' => $yearEndMonth,

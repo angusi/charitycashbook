@@ -1,0 +1,213 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Review Gift Aid - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Review Gift Aid</h1>
+    <p class="text-sm text-gray-500">
+        <a href="/charity/{{ charity.id }}/giftaid" class="text-blue-600 hover:text-blue-800">← Back to Gift Aid</a>
+    </p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+{% if incomplete_setup|length == 0 and needs_amount_confirmation|length == 0 %}
+<div class="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+    <svg class="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-green-800">All transactions reviewed</h3>
+    <p class="mt-1 text-sm text-green-600">There are no transactions needing Gift Aid review.</p>
+    <div class="mt-4">
+        <a href="/charity/{{ charity.id }}/giftaid" class="text-green-600 hover:text-green-800 font-medium">← Return to Gift Aid</a>
+    </div>
+</div>
+{% else %}
+
+{% if incomplete_setup|length > 0 %}
+<!-- Incomplete Setup Section -->
+<div class="bg-white shadow rounded-lg mb-6">
+    <div class="px-4 py-4 border-b border-gray-200 bg-yellow-50">
+        <div class="flex items-center">
+            <svg class="h-5 w-5 text-yellow-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+            </svg>
+            <h2 class="text-lg font-medium text-yellow-800">Incomplete Setup ({{ incomplete_setup|length }})</h2>
+        </div>
+        <p class="mt-1 text-sm text-yellow-700">
+            These transactions are marked for Gift Aid but need donor information or a valid declaration.
+        </p>
+    </div>
+    
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
+                <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for tx in incomplete_setup %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                    {{ tx.transaction_date|date('d M Y') }}
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-900">
+                    {{ tx.description|default('(no description)') }}
+                    {% if tx.reference is not empty %}
+                    <span class="text-gray-500 text-xs ml-1">{{ tx.reference }}</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                    £{{ tx.amount|number_format(2) }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm">
+                    {% if tx.giftaid_status == 'pending_donor' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            No donor selected
+                        </span>
+                    {% elseif tx.giftaid_status == 'pending_declaration' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            No valid declaration
+                        </span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-right">
+                    {% if tx.giftaid_status == 'pending_donor' %}
+                    <a href="/charity/{{ charity.id }}/transactions/{{ tx.id }}/edit" 
+                       class="text-blue-600 hover:text-blue-800">
+                        Edit Transaction →
+                    </a>
+                    {% elseif tx.giftaid_status == 'pending_declaration' %}
+                    <a href="/charity/{{ charity.id }}/donors/{{ tx.donor_id }}/edit" 
+                       class="text-blue-600 hover:text-blue-800">
+                        Edit Donor →
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if needs_amount_confirmation|length > 0 %}
+<!-- Amount Confirmation Section -->
+<div class="bg-white shadow rounded-lg">
+    <div class="px-4 py-4 border-b border-gray-200 bg-orange-50">
+        <div class="flex items-center">
+            <svg class="h-5 w-5 text-orange-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <h2 class="text-lg font-medium text-orange-800">Amount Confirmation Needed ({{ needs_amount_confirmation|length }})</h2>
+        </div>
+        <p class="mt-1 text-sm text-orange-700">
+            These transactions are eligible but need you to confirm how much can be claimed.
+            This may be because the transaction spans multiple categories with different eligibility.
+        </p>
+    </div>
+
+    <form method="POST" action="/charity/{{ charity.id }}/giftaid/review">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Donor</th>
+                    <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                    <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Eligible Cats</th>
+                    <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">GA Amount</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for tx in needs_amount_confirmation %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {{ tx.transaction_date|date('d M Y') }}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-900">
+                        <a href="/charity/{{ charity.id }}/transactions/{{ tx.id }}/edit" 
+                           class="text-blue-600 hover:text-blue-800" target="_blank">
+                            {{ tx.description|default('(no description)') }}
+                        </a>
+                        {% if tx.reference is not empty %}
+                        <span class="text-gray-500 text-xs ml-1">{{ tx.reference }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        {{ tx.donor_name|default('—') }}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                        £{{ tx.amount|number_format(2) }}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-right">
+                        {% if tx.eligible_amount is defined and tx.eligible_amount != tx.amount %}
+                            <span class="text-green-600 font-mono">£{{ tx.eligible_amount|number_format(2) }}</span>
+                            <button type="button" 
+                                    onclick="document.getElementById('amount_{{ tx.id }}').value = '{{ tx.eligible_amount }}'"
+                                    class="ml-1 text-xs text-blue-600 hover:text-blue-800">
+                                Use
+                            </button>
+                        {% else %}
+                            <span class="text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-right">
+                        <div class="flex items-center justify-end space-x-2">
+                            <span class="text-gray-500">£</span>
+                            <input type="number" 
+                                   name="amounts[{{ tx.id }}]"
+                                   id="amount_{{ tx.id }}"
+                                   step="0.01" 
+                                   min="0" 
+                                   max="{{ tx.amount }}"
+                                   placeholder="{{ tx.amount|number_format(2) }}"
+                                   class="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm font-mono
+                                          focus:ring-blue-500 focus:border-blue-500">
+                            <button type="button"
+                                    onclick="document.getElementById('amount_{{ tx.id }}').value = '{{ tx.amount }}'"
+                                    class="text-xs text-gray-500 hover:text-gray-700" title="Use full amount">
+                                Max
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="px-4 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+            <p class="text-sm text-gray-500">
+                {{ needs_amount_confirmation|length }} transaction{{ needs_amount_confirmation|length != 1 ? 's' : '' }} to confirm
+            </p>
+            <div class="flex space-x-3">
+                <button type="button" 
+                        onclick="confirmAll()"
+                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Confirm All at Full Amount
+                </button>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Save Confirmed Amounts
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function confirmAll() {
+    {% for tx in needs_amount_confirmation %}
+    document.getElementById('amount_{{ tx.id }}').value = '{{ tx.amount }}';
+    {% endfor %}
+}
+</script>
+{% endif %}
+
+{% endif %}
+{% endblock %}

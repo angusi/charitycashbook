@@ -1,0 +1,221 @@
+{% extends "layouts/charity.html.twig" %}
+
+{% block title %}Create Gift Aid Correction - {{ charity.name }}{% endblock %}
+
+{% block charity_content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Create Gift Aid Correction</h1>
+    <p class="text-sm text-gray-500">
+        <a href="/charity/{{ charity.id }}/giftaid" class="text-blue-600 hover:text-blue-800">← Back to Gift Aid</a>
+    </p>
+</div>
+
+{% include 'components/flash.html.twig' %}
+
+<div class="bg-white shadow rounded-lg">
+    <div class="p-6">
+        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h3 class="text-sm font-medium text-blue-800 mb-2">When to use corrections</h3>
+            <p class="text-sm text-blue-700">
+                Use corrections when a Gift Aid claim has already been submitted to HMRC but you later discover 
+                the amount was incorrect. This might happen if:
+            </p>
+            <ul class="mt-2 text-sm text-blue-700 list-disc list-inside space-y-1">
+                <li>A donor's declaration was invalidated (e.g., they no longer pay enough tax)</li>
+                <li>The transaction amount was entered incorrectly</li>
+                <li>Part of a donation wasn't actually eligible (e.g., payment for goods/services)</li>
+            </ul>
+            <p class="mt-2 text-sm text-blue-700">
+                <strong>Overclaims</strong> (reducing the amount) will be reported to HMRC on your next claim as tax to repay.
+                <br>
+                <strong>Underclaims</strong> (increasing the amount) will appear as additional donations on your next claim.
+            </p>
+        </div>
+
+        <form method="POST" action="/charity/{{ charity.id }}/giftaid/corrections">
+            {% if transaction %}
+            <!-- Pre-filled transaction -->
+            <input type="hidden" name="transaction_id" value="{{ transaction.id }}">
+            
+            <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Original Transaction</h4>
+                <dl class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <dt class="text-gray-500">Date</dt>
+                        <dd class="font-medium">{{ transaction.date|date('d M Y') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Reference</dt>
+                        <dd class="font-medium">{{ transaction.reference|default('—') }}</dd>
+                    </div>
+                    <div class="col-span-2">
+                        <dt class="text-gray-500">Description</dt>
+                        <dd class="font-medium">{{ transaction.description|default('(no description)') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Total Amount</dt>
+                        <dd class="font-medium font-mono">£{{ transaction.amount|number_format(2) }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Previously Claimed</dt>
+                        <dd class="font-medium font-mono text-green-600">£{{ transaction.giftaid_amount|number_format(2) }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">Donor</dt>
+                        <dd class="font-medium">{{ transaction.donor_name|default('—') }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="mb-6">
+                <label for="corrected_amount" class="block text-sm font-medium text-gray-700 mb-1">
+                    Corrected Gift Aid Amount
+                </label>
+                <div class="flex items-center">
+                    <span class="text-gray-500 mr-2">£</span>
+                    <input type="number" 
+                           name="corrected_amount" 
+                           id="corrected_amount"
+                           step="0.01" 
+                           min="0" 
+                           max="{{ transaction.amount }}"
+                           value="{{ transaction.giftaid_amount }}"
+                           required
+                           class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm text-right font-mono
+                                  focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <p class="mt-1 text-xs text-gray-500">
+                    Enter the amount that should have been claimed (0 to {{ transaction.amount|number_format(2) }}).
+                    The difference from the original claim will be calculated automatically.
+                </p>
+            </div>
+
+            <div id="adjustment-preview" class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg hidden">
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Correction Summary</h4>
+                <dl class="grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-gray-500">Originally claimed:</dt>
+                    <dd class="font-mono text-right">£{{ transaction.giftaid_amount|number_format(2) }}</dd>
+                    <dt class="text-gray-500">Corrected amount:</dt>
+                    <dd class="font-mono text-right" id="preview-corrected">£{{ transaction.giftaid_amount|number_format(2) }}</dd>
+                    <dt class="text-gray-500 font-medium">Adjustment:</dt>
+                    <dd class="font-mono text-right font-medium" id="preview-adjustment">£0.00</dd>
+                    <dt class="text-gray-500" id="preview-tax-label">Tax impact:</dt>
+                    <dd class="font-mono text-right" id="preview-tax">£0.00</dd>
+                </dl>
+            </div>
+
+            {% else %}
+            <!-- Manual entry -->
+            <div class="mb-6">
+                <label for="transaction_id" class="block text-sm font-medium text-gray-700 mb-1">
+                    Transaction ID
+                </label>
+                <input type="number" 
+                       name="transaction_id" 
+                       id="transaction_id"
+                       required
+                       placeholder="Enter the transaction ID"
+                       class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm
+                              focus:ring-blue-500 focus:border-blue-500">
+                <p class="mt-1 text-xs text-gray-500">
+                    The ID of the claimed transaction you need to correct.
+                </p>
+            </div>
+
+            <div class="mb-6">
+                <label for="corrected_amount" class="block text-sm font-medium text-gray-700 mb-1">
+                    Corrected Gift Aid Amount
+                </label>
+                <div class="flex items-center">
+                    <span class="text-gray-500 mr-2">£</span>
+                    <input type="number" 
+                           name="corrected_amount" 
+                           id="corrected_amount"
+                           step="0.01" 
+                           min="0" 
+                           required
+                           class="w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm text-right font-mono
+                                  focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <p class="mt-1 text-xs text-gray-500">
+                    Enter the amount that should have been claimed.
+                </p>
+            </div>
+            {% endif %}
+
+            <div class="mb-6">
+                <label for="reason" class="block text-sm font-medium text-gray-700 mb-1">
+                    Reason for Correction <span class="text-red-500">*</span>
+                </label>
+                <textarea name="reason" 
+                          id="reason"
+                          rows="3"
+                          required
+                          placeholder="Explain why this correction is needed..."
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm
+                                 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                <p class="mt-1 text-xs text-gray-500">
+                    This will be recorded for audit purposes.
+                </p>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <a href="/charity/{{ charity.id }}/giftaid" 
+                   class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Create Correction
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if transaction %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const originalAmount = {{ transaction.giftaid_amount }};
+    const correctedInput = document.getElementById('corrected_amount');
+    const previewDiv = document.getElementById('adjustment-preview');
+    const previewCorrected = document.getElementById('preview-corrected');
+    const previewAdjustment = document.getElementById('preview-adjustment');
+    const previewTax = document.getElementById('preview-tax');
+    const previewTaxLabel = document.getElementById('preview-tax-label');
+    
+    function updatePreview() {
+        const corrected = parseFloat(correctedInput.value) || 0;
+        const adjustment = corrected - originalAmount;
+        const taxImpact = adjustment * 0.25;
+        
+        previewDiv.classList.remove('hidden');
+        previewCorrected.textContent = '£' + corrected.toFixed(2);
+        
+        if (adjustment < 0) {
+            previewAdjustment.textContent = '-£' + Math.abs(adjustment).toFixed(2);
+            previewAdjustment.className = 'font-mono text-right font-medium text-red-600';
+            previewTaxLabel.textContent = 'Tax to repay HMRC:';
+            previewTax.textContent = '£' + Math.abs(taxImpact).toFixed(2);
+            previewTax.className = 'font-mono text-right text-red-600';
+        } else if (adjustment > 0) {
+            previewAdjustment.textContent = '+£' + adjustment.toFixed(2);
+            previewAdjustment.className = 'font-mono text-right font-medium text-green-600';
+            previewTaxLabel.textContent = 'Additional tax to claim:';
+            previewTax.textContent = '£' + taxImpact.toFixed(2);
+            previewTax.className = 'font-mono text-right text-green-600';
+        } else {
+            previewAdjustment.textContent = '£0.00';
+            previewAdjustment.className = 'font-mono text-right font-medium text-gray-600';
+            previewTaxLabel.textContent = 'Tax impact:';
+            previewTax.textContent = '£0.00';
+            previewTax.className = 'font-mono text-right text-gray-600';
+        }
+    }
+    
+    correctedInput.addEventListener('input', updatePreview);
+    updatePreview();
+});
+</script>
+{% endif %}
+{% endblock %}

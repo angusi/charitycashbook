@@ -185,6 +185,34 @@
                     <div class="border-t border-gray-200 pt-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">Gift Aid</h3>
                         
+                        <!-- Gift Aid Intent Toggle -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Gift Aid Eligible?</label>
+                            <input type="hidden" name="giftaid_eligibility_override" id="giftaid_eligibility_override" value="">
+                            <div class="inline-flex rounded-md shadow-sm" role="group">
+                                <button type="button" id="giftaid-no-btn"
+                                        class="px-4 py-2 text-sm font-medium rounded-l-md border
+                                               bg-white text-gray-700 border-gray-300 hover:bg-gray-50
+                                               focus:z-10 focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                                    No
+                                </button>
+                                <button type="button" id="giftaid-partial-btn"
+                                        class="px-4 py-2 text-sm font-medium border-t border-b
+                                               bg-white text-gray-700 border-gray-300 hover:bg-gray-50
+                                               focus:z-10 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500">
+                                    Partial
+                                </button>
+                                <button type="button" id="giftaid-yes-btn"
+                                        class="px-4 py-2 text-sm font-medium rounded-r-md border-t border-b border-r
+                                               bg-white text-gray-700 border-gray-300 hover:bg-gray-50
+                                               focus:z-10 focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    Yes
+                                </button>
+                            </div>
+                            <p id="giftaid-intent-hint" class="mt-1 text-xs text-gray-500"></p>
+                        </div>
+                        
+                        <!-- Donor selection - always visible for receipts -->
                         <div class="mb-4">
                             <div class="flex justify-between items-center">
                                 <label for="donor_search" class="block text-sm font-medium text-gray-700">Donor</label>
@@ -200,6 +228,24 @@
                             </div>
                             <p class="mt-1 text-xs text-gray-500">Type to search · ✓ = has active Gift Aid declaration</p>
                         </div>
+                        
+                        <!-- Gift Aid options - shown when intent is Yes or Partial -->
+                        <div id="giftaid-details-section" class="hidden">
+                            <!-- Gift Aid hint - shown when category is GA-eligible but no donor selected -->
+                            <div id="giftaid-hint" class="hidden mb-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <svg class="h-5 w-5 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-orange-700">
+                                            Add a donor with a valid Gift Aid declaration to enable claiming.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
 
                         <div class="space-y-3">
                             <label class="flex items-center">
@@ -213,6 +259,40 @@
                                 <span class="ml-2 text-sm text-gray-700">GASDS (small cash donation, £30 or under)</span>
                             </label>
                         </div>
+                        
+                        <!-- Partial Gift Aid section (shown when Partial is selected) -->
+                        <div id="partial-giftaid-section" class="hidden mt-4 pt-4 border-t border-gray-200">
+                            <div class="p-3 bg-gray-50 rounded-md mb-3" id="category-breakdown">
+                                <!-- Populated by JS when in split-category mode -->
+                            </div>
+                            
+                            <div class="flex items-end gap-3">
+                                <div class="flex-1">
+                                    <label for="giftaid_amount" class="block text-sm font-medium text-gray-700">
+                                        Gift Aid eligible amount
+                                    </label>
+                                    <div class="mt-1 relative rounded-md shadow-sm">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <span class="text-gray-500 sm:text-sm">£</span>
+                                        </div>
+                                        <input type="number" name="giftaid_amount" id="giftaid_amount" step="0.01" min="0"
+                                               class="block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                               placeholder="0.00">
+                                    </div>
+                                </div>
+                                <button type="button" id="use-suggested-btn" onclick="useSuggestedGiftAidAmount()" 
+                                        class="hidden px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50">
+                                    Use suggested
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">
+                                Enter the portion of the receipt that qualifies for Gift Aid (e.g., donation component only)
+                            </p>
+                            <p id="giftaid-tax-preview" class="mt-1 text-xs text-green-600 hidden">
+                                Tax relief: £<span id="giftaid-tax-amount">0.00</span>
+                            </p>
+                        </div>
+                        </div><!-- end giftaid-details-section -->
                     </div>
                 {% endif %}
             </div>
@@ -374,6 +454,10 @@ function toggleSplitMode(type) {
             document.getElementById('category_id').setAttribute('required', 'required');
             document.getElementById('category-entries').innerHTML = '';
             categoryEntryCount = 0;
+        }
+        // Update Gift Aid intent when switching modes
+        if (typeof updateGiftAidOnCategoryChange === 'function') {
+            updateGiftAidOnCategoryChange();
         }
     } else if (type === 'cashbook') {
         cashbookSplitMode = !cashbookSplitMode;
@@ -700,6 +784,47 @@ window.addEventListener('resize', function() {
     }
 });
 
+// Gift Aid hint - show when category is GA-eligible but no donor selected
+const giftaidHint = document.getElementById('giftaid-hint');
+const categorySelect = document.getElementById('category_id');
+
+function updateGiftAidHint() {
+    if (!giftaidHint) return;
+    
+    const selectedCategoryId = categorySelect ? categorySelect.value : '';
+    const hasDonor = donorIdInput.value !== '';
+    
+    // Find if selected category is giftaid_eligible_default
+    const selectedCategory = categories.find(c => c.id == selectedCategoryId);
+    const isGiftAidCategory = selectedCategory && selectedCategory.giftaid_eligible_default;
+    
+    // Show hint if category is GA-eligible and no donor is selected
+    if (isGiftAidCategory && !hasDonor) {
+        giftaidHint.classList.remove('hidden');
+    } else {
+        giftaidHint.classList.add('hidden');
+    }
+}
+
+// Listen for category and donor changes
+if (categorySelect) {
+    categorySelect.addEventListener('change', updateGiftAidHint);
+}
+donorIdInput.addEventListener('change', updateGiftAidHint);
+
+// Also update when donor is selected via the dropdown
+const originalSelectDonor = selectDonor;
+selectDonor = function(id, name) {
+    originalSelectDonor(id, name);
+    updateGiftAidHint();
+};
+
+const originalClearDonor = clearDonor;
+clearDonor = function() {
+    originalClearDonor();
+    updateGiftAidHint();
+};
+
 // New Donor Modal
 const newDonorModal = document.getElementById('new-donor-modal');
 
@@ -790,6 +915,368 @@ document.addEventListener('keydown', function(e) {
         closeNewDonorModal();
     }
 });
+
+// Gift Aid Intent Toggle
+const giftaidOverrideInput = document.getElementById('giftaid_eligibility_override');
+const giftaidYesBtn = document.getElementById('giftaid-yes-btn');
+const giftaidNoBtn = document.getElementById('giftaid-no-btn');
+const giftaidPartialBtn = document.getElementById('giftaid-partial-btn');
+const giftaidDetailsSection = document.getElementById('giftaid-details-section');
+const giftaidIntentHint = document.getElementById('giftaid-intent-hint');
+const partialGiftAidSection = document.getElementById('partial-giftaid-section');
+
+let giftaidIntent = null; // null = not set, 'eligible' = Yes, 'not_eligible' = No, 'partial' = Partial
+
+function resetGiftAidButtons() {
+    // Reset all buttons to neutral state
+    giftaidNoBtn?.classList.remove('bg-red-600', 'text-white', 'border-red-600');
+    giftaidNoBtn?.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+    giftaidPartialBtn?.classList.remove('bg-yellow-500', 'text-white', 'border-yellow-500');
+    giftaidPartialBtn?.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+    giftaidYesBtn?.classList.remove('bg-green-600', 'text-white', 'border-green-600');
+    giftaidYesBtn?.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
+}
+
+function setGiftAidIntent(intent) {
+    giftaidIntent = intent;
+    
+    // For the hidden field, 'partial' maps to 'eligible' (we're claiming, just not full amount)
+    giftaidOverrideInput.value = (intent === 'partial') ? 'eligible' : intent;
+    
+    resetGiftAidButtons();
+    
+    if (intent === 'not_eligible') {
+        giftaidNoBtn?.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+        giftaidNoBtn?.classList.add('bg-red-600', 'text-white', 'border-red-600');
+        giftaidDetailsSection?.classList.add('hidden');
+        partialGiftAidSection?.classList.add('hidden');
+        if (giftaidIntentHint) {
+            giftaidIntentHint.textContent = 'This receipt will not be claimed for Gift Aid.';
+            giftaidIntentHint.classList.remove('text-green-600', 'text-orange-600');
+            giftaidIntentHint.classList.add('text-gray-500');
+        }
+    } else if (intent === 'partial') {
+        giftaidPartialBtn?.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+        giftaidPartialBtn?.classList.add('bg-yellow-500', 'text-white', 'border-yellow-500');
+        giftaidDetailsSection?.classList.remove('hidden');
+        partialGiftAidSection?.classList.remove('hidden');
+        // Make amount required for partial
+        const giftaidAmountInput = document.getElementById('giftaid_amount');
+        if (giftaidAmountInput) giftaidAmountInput.required = true;
+        updateCategoryBreakdown();
+        updateGiftAidIntentHint();
+    } else if (intent === 'eligible') {
+        giftaidYesBtn?.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+        giftaidYesBtn?.classList.add('bg-green-600', 'text-white', 'border-green-600');
+        giftaidDetailsSection?.classList.remove('hidden');
+        partialGiftAidSection?.classList.add('hidden');
+        // Clear the partial amount when switching to full and remove required
+        const giftaidAmountInput = document.getElementById('giftaid_amount');
+        if (giftaidAmountInput) {
+            giftaidAmountInput.value = '';
+            giftaidAmountInput.required = false;
+        }
+        updateGiftAidIntentHint();
+    }
+}
+
+function updateGiftAidIntentHint() {
+    if (!giftaidIntentHint || giftaidIntent === 'not_eligible') return;
+    
+    const hasDonor = donorIdInput.value !== '';
+    const hasOneoff = document.querySelector('input[name="has_oneoff_declaration"]')?.checked;
+    
+    let statusText = '';
+    let isComplete = false;
+    
+    if (hasOneoff) {
+        statusText = 'One-off declaration provided.';
+        isComplete = true;
+    } else if (!hasDonor) {
+        statusText = 'Select a donor to complete Gift Aid setup.';
+    } else {
+        const selectedDonor = donors.find(d => d.id == donorIdInput.value);
+        if (selectedDonor && selectedDonor.has_active_declaration) {
+            statusText = 'Donor has valid declaration.';
+            isComplete = true;
+        } else {
+            statusText = 'Donor needs a Gift Aid declaration.';
+        }
+    }
+    
+    if (giftaidIntent === 'partial') {
+        statusText = (isComplete ? '✓ ' : '') + statusText + ' Enter the eligible amount below.';
+    }
+    
+    giftaidIntentHint.textContent = statusText;
+    giftaidIntentHint.classList.remove('text-green-600', 'text-orange-600', 'text-gray-500');
+    giftaidIntentHint.classList.add(isComplete ? 'text-green-600' : 'text-orange-600');
+}
+
+function getSelectedCategoryEligibility() {
+    // Returns { eligible: number, ineligible: number, eligibleAmount: number, ineligibleAmount: number }
+    let eligibleCount = 0;
+    let ineligibleCount = 0;
+    let eligibleAmount = 0;
+    let ineligibleAmount = 0;
+    
+    if (categorySplitMode) {
+        // Split mode - check all category entries
+        const entries = document.querySelectorAll('#category-entries > div');
+        entries.forEach(entry => {
+            const select = entry.querySelector('select');
+            const amountInput = entry.querySelector('input[type="number"]');
+            if (select && amountInput && select.value) {
+                const cat = categories.find(c => c.id == select.value);
+                const amount = parseFloat(amountInput.value) || 0;
+                if (cat) {
+                    if (cat.giftaid_eligible_default) {
+                        eligibleCount++;
+                        eligibleAmount += amount;
+                    } else {
+                        ineligibleCount++;
+                        ineligibleAmount += amount;
+                    }
+                }
+            }
+        });
+    } else {
+        // Single category mode
+        const categoryId = document.getElementById('category_id')?.value;
+        const amount = parseFloat(document.getElementById('amount')?.value) || 0;
+        if (categoryId) {
+            const cat = categories.find(c => c.id == categoryId);
+            if (cat) {
+                if (cat.giftaid_eligible_default) {
+                    eligibleCount = 1;
+                    eligibleAmount = amount;
+                } else {
+                    ineligibleCount = 1;
+                    ineligibleAmount = amount;
+                }
+            }
+        }
+    }
+    
+    return { eligibleCount, ineligibleCount, eligibleAmount, ineligibleAmount };
+}
+
+function setDefaultGiftAidIntent() {
+    const { eligibleCount, ineligibleCount, eligibleAmount } = getSelectedCategoryEligibility();
+    
+    if (eligibleCount === 0 && ineligibleCount === 0) {
+        // No categories selected yet - don't set a default
+        return;
+    }
+    
+    if (eligibleCount > 0 && ineligibleCount > 0) {
+        // Mixed - default to Partial
+        setGiftAidIntent('partial');
+        // Pre-fill the suggested amount
+        document.getElementById('giftaid_amount').value = eligibleAmount.toFixed(2);
+    } else if (eligibleCount > 0) {
+        // All eligible - default to Yes
+        setGiftAidIntent('eligible');
+    } else {
+        // None eligible - default to No
+        setGiftAidIntent('not_eligible');
+    }
+}
+
+// Update intent hint when donor changes
+const origSelectDonorForIntent = selectDonor;
+selectDonor = function(id, name) {
+    origSelectDonorForIntent(id, name);
+    updateGiftAidIntentHint();
+};
+
+const origClearDonorForIntent = clearDonor;
+clearDonor = function() {
+    origClearDonorForIntent();
+    updateGiftAidIntentHint();
+};
+
+// Update when one-off declaration checkbox changes
+document.querySelector('input[name="has_oneoff_declaration"]')?.addEventListener('change', updateGiftAidIntentHint);
+
+// Track if user has manually set the intent (to avoid overriding their choice)
+let userHasSetIntent = false;
+
+// Function to update Gift Aid intent on category change (called from toggleSplit)
+function updateGiftAidOnCategoryChange() {
+    if (!userHasSetIntent) {
+        setDefaultGiftAidIntent();
+    }
+    if (giftaidIntent === 'partial') {
+        updateCategoryBreakdown();
+    }
+}
+
+// Set default on category change (unless user has manually chosen)
+if (categorySelect) {
+    categorySelect.addEventListener('change', function() {
+        updateGiftAidOnCategoryChange();
+    });
+}
+
+// Also update when split category entries change
+const categoryEntriesContainer = document.getElementById('category-entries');
+if (categoryEntriesContainer) {
+    // Use event delegation for select changes in split mode
+    categoryEntriesContainer.addEventListener('change', function(e) {
+        if (e.target.tagName === 'SELECT') {
+            updateGiftAidOnCategoryChange();
+        }
+    });
+    
+    // Also observe DOM changes (entries added/removed)
+    const observer = new MutationObserver(function() {
+        updateGiftAidOnCategoryChange();
+    });
+    observer.observe(categoryEntriesContainer, { childList: true });
+}
+
+// Wrap setGiftAidIntent to track manual changes
+const originalSetGiftAidIntent = setGiftAidIntent;
+setGiftAidIntent = function(intent, isUserAction = false) {
+    if (isUserAction) {
+        userHasSetIntent = true;
+    }
+    originalSetGiftAidIntent(intent);
+};
+
+// Set up button click handlers
+if (giftaidYesBtn) {
+    giftaidYesBtn.onclick = function() { setGiftAidIntent('eligible', true); };
+}
+if (giftaidNoBtn) {
+    giftaidNoBtn.onclick = function() { setGiftAidIntent('not_eligible', true); };
+}
+if (giftaidPartialBtn) {
+    giftaidPartialBtn.onclick = function() { setGiftAidIntent('partial', true); };
+}
+
+// Initialize - no default until category is selected
+if (giftaidOverrideInput) {
+    // Start with no selection visible (both buttons neutral)
+    // Will be set when category is chosen
+}
+
+// Partial Gift Aid functionality
+let suggestedGiftAidAmount = null;
+
+function updateCategoryBreakdown() {
+    const breakdown = document.getElementById('category-breakdown');
+    const useSuggestedBtn = document.getElementById('use-suggested-btn');
+    
+    if (!breakdown) return;
+    
+    // Get selected categories and their amounts
+    let categoryData = [];
+    
+    if (categorySplitMode) {
+        // Split mode - get from entries
+        const entries = document.querySelectorAll('#category-entries > div');
+        entries.forEach(entry => {
+            const select = entry.querySelector('select');
+            const amountInput = entry.querySelector('input[type="number"]');
+            if (select && amountInput && select.value) {
+                const cat = categories.find(c => c.id == select.value);
+                if (cat) {
+                    categoryData.push({
+                        name: cat.name,
+                        amount: parseFloat(amountInput.value) || 0,
+                        eligible: !!cat.giftaid_eligible_default
+                    });
+                }
+            }
+        });
+    } else {
+        // Simple mode - single category
+        const catId = document.getElementById('category_id').value;
+        const amount = parseFloat(document.getElementById('amount').value) || 0;
+        if (catId) {
+            const cat = categories.find(c => c.id == catId);
+            if (cat) {
+                categoryData.push({
+                    name: cat.name,
+                    amount: amount,
+                    eligible: !!cat.giftaid_eligible_default
+                });
+            }
+        }
+    }
+    
+    // Only show breakdown if there are multiple categories or mixed eligibility
+    const hasMultipleCategories = categoryData.length > 1;
+    const hasMixedEligibility = categoryData.some(c => c.eligible) && categoryData.some(c => !c.eligible);
+    
+    if (hasMultipleCategories && hasMixedEligibility) {
+        let html = '<p class="text-sm font-medium text-gray-700 mb-2">Category breakdown:</p>';
+        let eligibleTotal = 0;
+        
+        categoryData.forEach(c => {
+            const icon = c.eligible ? '✓' : '✗';
+            const colorClass = c.eligible ? 'text-green-600' : 'text-gray-400';
+            html += `<div class="flex justify-between text-sm py-1">
+                <span><span class="${colorClass}">${icon}</span> ${escapeHtml(c.name)}</span>
+                <span>£${c.amount.toFixed(2)}${c.eligible ? ' (eligible)' : ''}</span>
+            </div>`;
+            if (c.eligible) eligibleTotal += c.amount;
+        });
+        
+        html += `<div class="flex justify-between text-sm font-medium pt-2 border-t border-gray-200 mt-2">
+            <span>Suggested eligible amount:</span>
+            <span class="text-green-600">£${eligibleTotal.toFixed(2)}</span>
+        </div>`;
+        
+        breakdown.innerHTML = html;
+        breakdown.classList.remove('hidden');
+        useSuggestedBtn.classList.remove('hidden');
+        suggestedGiftAidAmount = eligibleTotal;
+    } else {
+        breakdown.classList.add('hidden');
+        useSuggestedBtn.classList.add('hidden');
+        suggestedGiftAidAmount = null;
+    }
+}
+
+function useSuggestedGiftAidAmount() {
+    if (suggestedGiftAidAmount !== null) {
+        document.getElementById('giftaid_amount').value = suggestedGiftAidAmount.toFixed(2);
+        updateGiftAidTaxPreview();
+    }
+}
+
+function updateGiftAidTaxPreview() {
+    const giftaidAmountInput = document.getElementById('giftaid_amount');
+    const taxPreview = document.getElementById('giftaid-tax-preview');
+    const taxAmount = document.getElementById('giftaid-tax-amount');
+    
+    if (!giftaidAmountInput || !taxPreview) return;
+    
+    const amount = parseFloat(giftaidAmountInput.value) || 0;
+    if (amount > 0) {
+        taxAmount.textContent = (amount * 0.25).toFixed(2);
+        taxPreview.classList.remove('hidden');
+    } else {
+        taxPreview.classList.add('hidden');
+    }
+}
+
+// Update breakdown when categories change
+if (categorySelect) {
+    categorySelect.addEventListener('change', function() {
+        if (partialGiftAidVisible) updateCategoryBreakdown();
+    });
+}
+
+document.getElementById('amount').addEventListener('input', function() {
+    if (partialGiftAidVisible) updateCategoryBreakdown();
+});
+
+document.getElementById('giftaid_amount').addEventListener('input', updateGiftAidTaxPreview);
+
 {% endif %}
 </script>
 {% endblock %}

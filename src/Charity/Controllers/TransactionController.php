@@ -38,6 +38,7 @@ class TransactionController extends BaseController
             'fund_id' => !empty($params['fund_id']) ? (int) $params['fund_id'] : null,
             'type' => $params['type'] ?? null,
             'category_id' => !empty($params['category_id']) ? (int) $params['category_id'] : null,
+            'giftaid_status' => $params['giftaid_status'] ?? null,
             'search' => $params['search'] ?? null,
         ];
 
@@ -188,6 +189,8 @@ class TransactionController extends BaseController
                 'donor_id' => !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
                 'has_oneoff_declaration' => !empty($data['has_oneoff_declaration']),
                 'is_gasds' => !empty($data['is_gasds']),
+                'giftaid_eligibility_override' => !empty($data['giftaid_eligibility_override']) ? $data['giftaid_eligibility_override'] : null,
+                'giftaid_amount' => isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '' ? (float) $data['giftaid_amount'] : null,
                 'cash_book_id' => !empty($data['cash_book_id']) ? (int) $data['cash_book_id'] : null,
                 'cashbook_entries' => $data['cashbook_entries'] ?? null,
             ]);
@@ -278,6 +281,8 @@ class TransactionController extends BaseController
                 'category_entries' => $data['category_entries'] ?? null,
                 'donor_id' => !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
                 'has_oneoff_declaration' => !empty($data['has_oneoff_declaration']),
+                'giftaid_eligibility_override' => !empty($data['giftaid_eligibility_override']) ? $data['giftaid_eligibility_override'] : null,
+                'giftaid_amount' => isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '' ? (float) $data['giftaid_amount'] : null,
                 'cash_book_id' => !empty($data['cash_book_id']) ? (int) $data['cash_book_id'] : null,
                 'cashbook_entries' => $data['cashbook_entries'] ?? null,
             ]);
