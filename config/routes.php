@@ -29,6 +29,11 @@ return function (App $app) {
     $app->post('/oauth/link-to-existing', \CharityCashbook\Auth\Controllers\OAuthCallbackController::class . ':linkToExisting');
     $app->get('/logout', \CharityCashbook\Auth\Controllers\LoginController::class . ':logout');
 
+    // Public Gift Aid declaration routes
+    $app->get('/giftaid/declare/{token}', \CharityCashbook\Public\Controllers\GiftAidDeclarationController::class . ':show');
+    $app->post('/giftaid/declare/{token}', \CharityCashbook\Public\Controllers\GiftAidDeclarationController::class . ':submit');
+    $app->get('/giftaid/declare/{token}/success', \CharityCashbook\Public\Controllers\GiftAidDeclarationController::class . ':success');
+
     // Account linking routes (authenticated)
     $app->group('/account', function (RouteCollectorProxy $group) {
         $group->get('', \CharityCashbook\Auth\Controllers\AccountController::class . ':index');
@@ -198,6 +203,11 @@ return function (App $app) {
             $donors->post('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':update')
                 ->add(new PermissionMiddleware('donors.edit'));
             $donors->post('/{id}/delete', \CharityCashbook\Charity\Controllers\DonorController::class . ':delete')
+                ->add(new PermissionMiddleware('donors.edit'));
+            // Declaration link generation
+            $donors->post('/{id}/declaration-link', \CharityCashbook\Charity\Controllers\DonorController::class . ':generateDeclarationLink')
+                ->add(new PermissionMiddleware('donors.edit'));
+            $donors->post('/declaration-links', \CharityCashbook\Charity\Controllers\DonorController::class . ':bulkGenerateDeclarationLinks')
                 ->add(new PermissionMiddleware('donors.edit'));
             // Privacy / GDPR
             $donors->get('/{id}/privacy/export', \CharityCashbook\Charity\Controllers\PrivacyController::class . ':exportDonorData')

@@ -9,10 +9,21 @@
         <p class="text-sm text-gray-500">{{ charity.name }}</p>
     </div>
     {% if permissions.donors_create %}
-        <a href="/charity/{{ charity.id }}/donors/create" 
-           class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-            + New Donor
-        </a>
+        <div class="space-x-2">
+            {% if permissions.donors_edit %}
+            <form method="post" action="/charity/{{ charity.id }}/donors/declaration-links" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50"
+                        title="Generate declaration links for all donors without an active Gift Aid declaration">
+                    Generate Declaration Links
+                </button>
+            </form>
+            {% endif %}
+            <a href="/charity/{{ charity.id }}/donors/create" 
+               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                + New Donor
+            </a>
+        </div>
     {% endif %}
 </div>
 

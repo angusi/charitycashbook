@@ -129,6 +129,11 @@ $container->set(DonorService::class, fn($c) => new DonorService(
     $c->get(AuditService::class)
 ));
 
+$container->set(\CharityCashbook\Charity\DeclarationTokenService::class, fn($c) => new \CharityCashbook\Charity\DeclarationTokenService(
+    $c->get(Database::class),
+    $c->get(Logger::class)
+));
+
 $container->set(GiftAidService::class, fn($c) => new GiftAidService(
     $c->get(Database::class),
     $c->get(Logger::class),
@@ -247,6 +252,8 @@ $container->set(LogsController::class, fn($c) => new LogsController($c));
 $container->set(AdminPrivacyController::class, fn($c) => new AdminPrivacyController($c));
 $container->set(SecurityController::class, fn($c) => new SecurityController($c));
 $container->set(CharityPrivacyController::class, fn($c) => new CharityPrivacyController($c));
+
+$container->set(\CharityCashbook\Public\Controllers\GiftAidDeclarationController::class, fn($c) => new \CharityCashbook\Public\Controllers\GiftAidDeclarationController($c));
 
 // Services
 $container->set(ServiceMetricsService::class, fn($c) => new ServiceMetricsService(

@@ -352,7 +352,7 @@ class DonorService
     /**
      * Add a declaration
      */
-    public function addDeclaration(int $donorId, int $charityId, int $userId, array $data): int
+    public function addDeclaration(int $donorId, int $charityId, ?int $userId, array $data): int
     {
         // Verify donor belongs to charity
         $donor = $this->getNameOnly($donorId, $charityId);
@@ -369,14 +369,30 @@ class DonorService
             'created_by_user_id' => $userId,
         ]);
 
-        $this->auditService->log($charityId, $userId, 'declaration.created', 'declaration', $id, [
-            'donor_id' => $donorId,
-        ]);
+        if ($userId) {
+            $this->auditService->log($charityId, $userId, 'declaration.created', 'declaration', $id, [
+                'donor_id' => $donorId,
+            ]);
+        }
 
         // Update eligible transactions
         $this->updateTransactionEligibility($donorId, $charityId);
 
         return $id;
+    }
+
+    /**
+     * Update donor details from a public declaration submission
+     */
+    public function updateFromPublicDeclaration(int $donorId, int $charityId, array $data): void
+    {
+        $this->db->update('donors', [
+            'name' => $data['name'],
+            'address_line1' => $data['address_line1'] ?: null,
+            'address_line2' => $data['address_line2'] ?: null,
+            'address_city' => $data['address_city'] ?: null,
+            'address_postcode' => $data['address_postcode'] ?: null,
+        ], 'id = ? AND charity_id = ?', [$donorId, $charityId]);
     }
 
     /**

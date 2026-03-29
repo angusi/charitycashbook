@@ -6,6 +6,7 @@ namespace CharityCashbook\Charity\Controllers;
 
 use CharityCashbook\Core\Controllers\BaseController;
 use CharityCashbook\Charity\DonorService;
+use CharityCashbook\Charity\DeclarationTokenService;
 use CharityCashbook\Charity\MemberService;
 use CharityCashbook\Charity\AuditService;
 use CharityCashbook\Core\Exceptions\ValidationException;
@@ -416,6 +417,76 @@ class DonorController extends BaseController
 
         $this->flash('success', 'Donor deleted successfully.');
         return $this->redirect($response, "/charity/$charityId/donors");
+    }
+
+    /**
+     * Generate a declaration link for a single donor
+     */
+    public function generateDeclarationLink(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = (int) $request->getAttribute('user_id');
+        $donorId = (int) $args['id'];
+
+        $donorService = $this->get(DonorService::class);
+        $tokenService = $this->get(DeclarationTokenService::class);
+        $config = $this->get('config');
+
+        $donor = $donorService->get($donorId, $charityId);
+        if (!$donor) {
+            $this->flash('error', 'Donor not found.');
+            return $this->redirect($response, "/charity/$charityId/donors");
+        }
+
+        // Check for existing active token
+        $existing = $tokenService->getActiveToken($donorId, $charityId);
+        if ($existing) {
+            $appUrl = rtrim($config['app']['url'], '/');
+            $url = $appUrl . '/giftaid/declare/' . $existing['token'];
+            $this->flash('success', 'An active declaration link already exists for this donor. URL: ' . $url);
+            return $this->redirect($response, "/charity/$charityId/donors/$donorId");
+        }
+
+        $token = $tokenService->generate($donorId, $charityId, $userId);
+        $appUrl = rtrim($config['app']['url'], '/');
+        $url = $appUrl . '/giftaid/declare/' . $token;
+
+        $this->flash('success', 'Declaration link generated. URL: ' . $url);
+        return $this->redirect($response, "/charity/$charityId/donors/$donorId");
+    }
+
+    /**
+     * Bulk generate declaration links for donors without active declarations
+     */
+    public function bulkGenerateDeclarationLinks(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = (int) $request->getAttribute('user_id');
+
+        $tokenService = $this->get(DeclarationTokenService::class);
+        $config = $this->get('config');
+        $appUrl = rtrim($config['app']['url'], '/');
+
+        $results = $tokenService->bulkGenerate($charityId, $userId);
+
+        if (empty($results)) {
+            $this->flash('success', 'All donors already have active declarations or pending links.');
+            return $this->redirect($response, "/charity/$charityId/donors");
+        }
+
+        // Build URLs
+        foreach ($results as &$result) {
+            $result['url'] = $appUrl . '/giftaid/declare/' . $result['token'];
+        }
+
+        $view = Twig::fromRequest($request);
+        return $view->render($response, 'charity/donors/declaration_links.html.twig', array_merge(
+            $this->getCommonTemplateData($request),
+            [
+                'results' => $results,
+                'count' => count($results),
+            ]
+        ));
     }
 
     /**
