@@ -168,16 +168,19 @@ class ReportController extends BaseController
         
         $reportService = $this->get(ReportService::class);
         
-        $asOfDate = $params['as_of_date'] ?? date('Y-m-d');
+        // Support both cumulative (as_of_date only) and period (date_from + date_to) modes
+        $dateFrom = $params['date_from'] ?? null;
+        $dateTo = $params['date_to'] ?? $params['as_of_date'] ?? date('Y-m-d');
         
-        $report = $reportService->fundSummary($charityId, $asOfDate);
+        $report = $reportService->fundSummary($charityId, $dateTo, $dateFrom);
         
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/reports/fund_summary.html.twig', array_merge(
             $this->getCommonTemplateData($request),
             [
                 'report' => $report,
-                'as_of_date' => $asOfDate,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
             ]
         ));
     }

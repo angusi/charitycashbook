@@ -125,16 +125,17 @@ class ReportService
     /**
      * Generate detailed Receipts and Payments report with operational category breakdown
      * Shows reporting categories with their operational categories underneath
+     *
+     * Pro-rates category amounts based on fund allocation for split transactions,
+     * consistent with generateFundReport() and fundSummary() calculations.
      */
     public function detailedReceiptsAndPayments(
         int $charityId,
         string $dateFrom,
         string $dateTo
     ): array {
-        $funds = $this->fundService->getAll($charityId);
-        
-        // Query all transactions grouped by operational category and fund type
-        // Uses transaction's primary fund to determine fund type (avoids Cartesian product with fund entries)
+        // Query transactions grouped by operational category and fund type
+        // Pro-rates category amounts based on fund allocation (handles split transactions)
         $sql = "SELECT
                     rc.id as reporting_category_id,
                     rc.name as reporting_category_name,
@@ -144,7 +145,12 @@ class ReportService
                     oc.name as operational_category_name,
                     oc.display_order as oc_display_order,
                     f.fund_type,
-                    COALESCE(SUM(ABS(tce.amount)), 0) as total
+                    COALESCE(SUM(
+                        ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
+                            (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
+                            0
+                        ))
+                    ), 0) as total
                 FROM reporting_categories rc
                 JOIN operational_categories oc ON oc.reporting_category_id = rc.id
                 LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
@@ -153,7 +159,8 @@ class ReportService
                     AND t.is_deleted = FALSE
                     AND t.transaction_date >= ?
                     AND t.transaction_date <= ?
-                LEFT JOIN funds f ON f.id = t.fund_id
+                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
+                LEFT JOIN funds f ON f.id = tfe.fund_id
                 WHERE rc.charity_id = ? AND rc.is_active = TRUE AND oc.is_active = TRUE
                 GROUP BY rc.id, rc.name, rc.category_type, rc.display_order,
                          oc.id, oc.name, oc.display_order, f.fund_type
@@ -379,9 +386,9 @@ class ReportService
         $dateConditions = ["t.transaction_date $operator ?"];
         $params = [$charityId, $fundId, $date];
 
-        // Only sum transactions from opening_balance_date onwards
+        // Only apply opening_balance_date filter if there's actually an opening balance
         // (opening balance already includes transactions up to that date)
-        if ($fund && !empty($fund['opening_balance_date'])) {
+        if ($fund && !empty($fund['opening_balance_date']) && (float)($fund['opening_balance'] ?? 0) != 0) {
             $dateConditions[] = 't.transaction_date > ?';
             $params[] = $fund['opening_balance_date'];
         }
@@ -413,10 +420,17 @@ class ReportService
 
     /**
      * Generate Fund Summary report
+     *
+     * When dateFrom is provided, shows period-specific activity (comparable to R&P reports).
+     * When dateFrom is null, shows cumulative balance from opening balance date.
+     *
+     * @param int $charityId The charity ID
+     * @param string|null $asOfDate End date (defaults to today)
+     * @param string|null $dateFrom Start date for period-specific report
      */
-    public function fundSummary(int $charityId, ?string $asOfDate = null): array
+    public function fundSummary(int $charityId, ?string $asOfDate = null, ?string $dateFrom = null): array
     {
-        $funds = $this->fundService->getAllBalances($charityId, $asOfDate);
+        $funds = $this->fundService->getAllBalances($charityId, $asOfDate, $dateFrom);
         
         $totals = [
             'unrestricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
@@ -442,6 +456,7 @@ class ReportService
         }
 
         return [
+            'date_from' => $dateFrom,
             'as_of_date' => $asOfDate ?? date('Y-m-d'),
             'funds' => $funds,
             'totals' => $totals,

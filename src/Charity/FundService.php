@@ -83,8 +83,13 @@ class FundService
      *
      * Uses transaction_fund_entries table for accurate multi-fund support.
      * Only sums transactions from opening_balance_date onwards to avoid double-counting.
+     *
+     * @param int $fundId The fund ID
+     * @param int $charityId The charity ID
+     * @param string|null $asOfDate End date for balance calculation (inclusive)
+     * @param string|null $dateFrom Start date for period calculation (if set, returns period activity not cumulative)
      */
-    public function getBalance(int $fundId, int $charityId, ?string $asOfDate = null): array
+    public function getBalance(int $fundId, int $charityId, ?string $asOfDate = null, ?string $dateFrom = null): array
     {
         $fund = $this->get($fundId, $charityId);
         if (!$fund) {
@@ -94,9 +99,14 @@ class FundService
         $dateConditions = [];
         $params = [$fundId];
 
-        // Only sum transactions from opening_balance_date onwards
-        // (opening balance already includes transactions up to that date)
-        if (!empty($fund['opening_balance_date'])) {
+        // If dateFrom is specified, this is a period calculation (not cumulative from opening)
+        // Otherwise, only sum transactions from opening_balance_date onwards
+        if ($dateFrom) {
+            $dateConditions[] = 't.transaction_date >= ?';
+            $params[] = $dateFrom;
+        } elseif (!empty($fund['opening_balance_date']) && (float)($fund['opening_balance'] ?? 0) != 0) {
+            // Only apply opening_balance_date filter if there's actually an opening balance
+            // (opening balance already includes transactions up to that date)
             $dateConditions[] = 't.transaction_date > ?';
             $params[] = $fund['opening_balance_date'];
         }
@@ -123,7 +133,9 @@ class FundService
             $params
         );
 
-        $opening = (float) ($fund['opening_balance'] ?? 0);
+        // In period mode (dateFrom specified), opening should be 0 and balance is just period activity
+        // In cumulative mode, opening is the fund's opening_balance
+        $opening = $dateFrom ? 0.0 : (float) ($fund['opening_balance'] ?? 0);
         $receipts = (float) ($totals['receipts'] ?? 0);
         $payments = (float) ($totals['payments'] ?? 0);
         $transfersIn = (float) ($totals['transfers_in'] ?? 0);
@@ -141,14 +153,18 @@ class FundService
 
     /**
      * Get all fund balances
+     *
+     * @param int $charityId The charity ID
+     * @param string|null $asOfDate End date for balance calculation
+     * @param string|null $dateFrom Start date for period calculation (if set, returns period activity)
      */
-    public function getAllBalances(int $charityId, ?string $asOfDate = null): array
+    public function getAllBalances(int $charityId, ?string $asOfDate = null, ?string $dateFrom = null): array
     {
         $funds = $this->getAll($charityId);
         $result = [];
 
         foreach ($funds as $fund) {
-            $balance = $this->getBalance($fund['id'], $charityId, $asOfDate);
+            $balance = $this->getBalance($fund['id'], $charityId, $asOfDate, $dateFrom);
             $result[] = array_merge($fund, $balance);
         }
 

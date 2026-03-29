@@ -11,10 +11,15 @@
 <!-- Date Filter -->
 <div class="bg-white rounded-lg shadow mb-6 p-4">
     <form method="get" class="space-y-4">
-        <div class="flex items-end space-x-4">
+        <div class="flex items-end space-x-4 flex-wrap gap-y-4">
             <div>
-                <label for="as_of_date" class="block text-sm font-medium text-gray-700">As of Date</label>
-                <input type="date" name="as_of_date" id="as_of_date" value="{{ as_of_date }}"
+                <label for="date_from" class="block text-sm font-medium text-gray-700">From Date (optional)</label>
+                <input type="date" name="date_from" id="date_from" value="{{ date_from }}"
+                       class="mt-1 block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="date_to" class="block text-sm font-medium text-gray-700">To Date</label>
+                <input type="date" name="date_to" id="date_to" value="{{ date_to }}"
                        class="mt-1 block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
             </div>
             <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
@@ -25,19 +30,29 @@
         {# Quick date buttons #}
         <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
             <span class="text-sm text-gray-500 self-center mr-2">Quick select:</span>
-            <button type="button" onclick="setAsOfDate('today')" 
+            <button type="button" onclick="setDateRange('current_year')" 
                     class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
-                Today
+                Current Financial Year
             </button>
-            <button type="button" onclick="setAsOfDate('last_year_end')" 
+            <button type="button" onclick="setDateRange('last_year')" 
                     class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
-                Last Year End
+                Last Financial Year
             </button>
-            <button type="button" onclick="setAsOfDate('two_years_ago_end')" 
+            <button type="button" onclick="setDateRange('all_time')" 
                     class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200">
-                2 Years Ago End
+                All Time (to today)
             </button>
         </div>
+        
+        {% if date_from %}
+        <p class="text-xs text-gray-500 mt-2">
+            Showing activity from {{ date_from }} to {{ date_to }}. Clear "From Date" for cumulative balances.
+        </p>
+        {% else %}
+        <p class="text-xs text-gray-500 mt-2">
+            Showing cumulative balances as of {{ date_to }}. Set "From Date" to see period-specific activity (to match R&P reports).
+        </p>
+        {% endif %}
     </form>
 </div>
 
@@ -50,40 +65,47 @@
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
     
-    function getYearEndDate(yearsAgo) {
+    function getFinancialYearDates(yearsAgo) {
         const today = new Date();
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth() + 1;
         const currentDay = today.getDate();
         
+        // Determine which financial year we're in
         let fyEndYear = currentYear;
         if (currentMonth < yearEndMonth || (currentMonth === yearEndMonth && currentDay <= yearEndDay)) {
+            // We're before this year's end, so FY ends this calendar year
         } else {
+            // We're after this year's end, so FY ends next calendar year
             fyEndYear = currentYear + 1;
         }
         fyEndYear -= yearsAgo;
         
-        return new Date(fyEndYear, yearEndMonth - 1, yearEndDay);
+        const fyEnd = new Date(fyEndYear, yearEndMonth - 1, yearEndDay);
+        const fyStart = new Date(fyEndYear - 1, yearEndMonth - 1, yearEndDay + 1);
+        
+        return { start: fyStart, end: fyEnd };
     }
     
-    window.setAsOfDate = function(option) {
-        const dateInput = document.getElementById('as_of_date');
-        let date;
+    window.setDateRange = function(option) {
+        const dateFromInput = document.getElementById('date_from');
+        const dateToInput = document.getElementById('date_to');
         
         switch(option) {
-            case 'today':
-                date = new Date();
+            case 'current_year':
+                const currentFY = getFinancialYearDates(0);
+                dateFromInput.value = formatDate(currentFY.start);
+                dateToInput.value = formatDate(new Date()); // Today
                 break;
-            case 'last_year_end':
-                date = getYearEndDate(1);
+            case 'last_year':
+                const lastFY = getFinancialYearDates(1);
+                dateFromInput.value = formatDate(lastFY.start);
+                dateToInput.value = formatDate(lastFY.end);
                 break;
-            case 'two_years_ago_end':
-                date = getYearEndDate(2);
+            case 'all_time':
+                dateFromInput.value = '';
+                dateToInput.value = formatDate(new Date());
                 break;
-        }
-        
-        if (date) {
-            dateInput.value = formatDate(date);
         }
     };
 })();
