@@ -84,6 +84,8 @@ class DonorController extends BaseController
         $donorService = $this->get(DonorService::class);
         $memberService = $this->get(MemberService::class);
         $auditService = $this->get(AuditService::class);
+        $tokenService = $this->get(DeclarationTokenService::class);
+        $config = $this->get('config');
         
         $donor = $donorService->get($donorId, $charityId);
         
@@ -95,6 +97,14 @@ class DonorController extends BaseController
         $declarations = $donorService->getDeclarations($donorId, $charityId);
         $donations = $donorService->getDonations($donorId, $charityId);
         $linkedMember = $memberService->getByDonorId($donorId);
+        
+        // Check for active declaration token
+        $activeToken = $tokenService->getActiveToken($donorId, $charityId);
+        $activeTokenUrl = null;
+        if ($activeToken) {
+            $appUrl = rtrim($config['app']['url'], '/');
+            $activeTokenUrl = $appUrl . '/giftaid/declare/' . $activeToken['token'];
+        }
         
         // Log donor detail access
         $auditService->logDonorAccess($charityId, $userId, $donorId, 'view');
@@ -113,6 +123,8 @@ class DonorController extends BaseController
                 'linked_member' => $linkedMember,
                 'can_export_privacy' => $canExportPrivacy,
                 'can_delete_privacy' => $canDeletePrivacy,
+                'active_token' => $activeToken,
+                'active_token_url' => $activeTokenUrl,
             ]
         ));
     }
@@ -487,6 +499,21 @@ class DonorController extends BaseController
                 'count' => count($results),
             ]
         ));
+    }
+
+    /**
+     * Expire (revoke) an active declaration link
+     */
+    public function expireDeclarationLink(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $donorId = (int) $args['id'];
+
+        $tokenService = $this->get(DeclarationTokenService::class);
+        $tokenService->expireAllForDonor($donorId, $charityId);
+
+        $this->flash('success', 'Declaration link has been expired.');
+        return $this->redirect($response, "/charity/$charityId/donors/$donorId");
     }
 
     /**

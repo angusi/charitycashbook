@@ -108,6 +108,24 @@ class DeclarationTokenService
     }
 
     /**
+     * Manually expire all active tokens for a donor
+     */
+    public function expireAllForDonor(int $donorId, int $charityId): void
+    {
+        $this->db->execute(
+            "UPDATE declaration_tokens SET expires_at = NOW() 
+             WHERE donor_id = ? AND charity_id = ? 
+             AND used_at IS NULL AND expires_at > NOW()",
+            [$donorId, $charityId]
+        );
+
+        $this->logger->info('Declaration tokens expired', [
+            'donor_id' => $donorId,
+            'charity_id' => $charityId,
+        ]);
+    }
+
+    /**
      * Bulk generate tokens for donors missing active declarations.
      *
      * Skips donors who already have an active (non-withdrawn) declaration

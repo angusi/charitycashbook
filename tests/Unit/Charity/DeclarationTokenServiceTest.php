@@ -165,6 +165,18 @@ class DeclarationTokenServiceTest extends TestCase
         $this->assertEquals($tokenData, $result);
     }
 
+    public function testExpireAllForDonorUpdatesTokens(): void
+    {
+        $this->db->expects($this->once())
+            ->method('execute')
+            ->with(
+                $this->stringContains('UPDATE declaration_tokens SET expires_at = NOW()'),
+                $this->equalTo([5, 1])
+            );
+
+        $this->service->expireAllForDonor(5, 1);
+    }
+
     public function testBulkGenerateSkipsDonorsWithActiveDeclarations(): void
     {
         // Query returns only donors without active declarations (per SQL)

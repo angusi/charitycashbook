@@ -207,6 +207,8 @@ return function (App $app) {
             // Declaration link generation
             $donors->post('/{id}/declaration-link', \CharityCashbook\Charity\Controllers\DonorController::class . ':generateDeclarationLink')
                 ->add(new PermissionMiddleware('donors.edit'));
+            $donors->post('/{id}/declaration-link/expire', \CharityCashbook\Charity\Controllers\DonorController::class . ':expireDeclarationLink')
+                ->add(new PermissionMiddleware('donors.edit'));
             $donors->post('/declaration-links', \CharityCashbook\Charity\Controllers\DonorController::class . ':bulkGenerateDeclarationLinks')
                 ->add(new PermissionMiddleware('donors.edit'));
             // Privacy / GDPR
