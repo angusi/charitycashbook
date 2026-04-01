@@ -261,10 +261,11 @@ class DonorService
      */
     public function delete(int $id, int $charityId): void
     {
-        // Delete declarations first
+        // Delete declarations first (declarations don't have charity_id;
+        // the donor's charity ownership is already verified by the caller)
         $this->db->execute(
-            "DELETE FROM declarations WHERE donor_id = ? AND charity_id = ?",
-            [$id, $charityId]
+            "DELETE FROM declarations WHERE donor_id = ?",
+            [$id]
         );
 
         // Delete the donor

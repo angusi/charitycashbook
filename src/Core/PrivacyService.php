@@ -61,8 +61,8 @@ class PrivacyService
 
         // Gift Aid declarations
         $data['declarations'] = $this->db->query(
-            "SELECT * FROM declarations WHERE donor_id = ? AND charity_id = ?",
-            [$donorId, $charityId]
+            "SELECT * FROM declarations WHERE donor_id = ?",
+            [$donorId]
         );
 
         // Donations linked to transactions
