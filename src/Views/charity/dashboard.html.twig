@@ -54,6 +54,7 @@
         </div>
     </div>
 
+    {% if permissions.giftaid_view %}
     <!-- Gift Aid Claimable -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
@@ -68,6 +69,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- Quick Actions -->
@@ -97,6 +99,7 @@
             </svg>
             <p class="mt-2 text-sm font-medium text-gray-900">R&P Report</p>
         </a>
+        {% if permissions.giftaid_view %}
         <a href="/charity/{{ charity.id }}/giftaid" 
            class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
             <svg class="mx-auto h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -104,6 +107,7 @@
             </svg>
             <p class="mt-2 text-sm font-medium text-gray-900">Gift Aid</p>
         </a>
+        {% endif %}
     </div>
 </div>
 

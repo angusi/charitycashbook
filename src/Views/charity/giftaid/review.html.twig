@@ -77,12 +77,12 @@
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-sm text-right">
-                    {% if tx.giftaid_status == 'pending_donor' %}
+                    {% if tx.giftaid_status == 'pending_donor' and permissions.transactions_edit %}
                     <a href="/charity/{{ charity.id }}/transactions/{{ tx.id }}/edit" 
                        class="text-blue-600 hover:text-blue-800">
                         Edit Transaction →
                     </a>
-                    {% elseif tx.giftaid_status == 'pending_declaration' %}
+                    {% elseif tx.giftaid_status == 'pending_declaration' and permissions.donors_edit %}
                     <a href="/charity/{{ charity.id }}/donors/{{ tx.donor_id }}/edit" 
                        class="text-blue-600 hover:text-blue-800">
                         Edit Donor →
@@ -131,10 +131,14 @@
                         {{ tx.transaction_date|date('d M Y') }}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">
+                        {% if permissions.transactions_edit %}
                         <a href="/charity/{{ charity.id }}/transactions/{{ tx.id }}/edit" 
                            class="text-blue-600 hover:text-blue-800" target="_blank">
                             {{ tx.description|default('(no description)') }}
                         </a>
+                        {% else %}
+                            {{ tx.description|default('(no description)') }}
+                        {% endif %}
                         {% if tx.reference is not empty %}
                         <span class="text-gray-500 text-xs ml-1">{{ tx.reference }}</span>
                         {% endif %}
@@ -148,16 +152,19 @@
                     <td class="px-4 py-3 whitespace-nowrap text-sm text-right">
                         {% if tx.eligible_amount is defined and tx.eligible_amount != tx.amount %}
                             <span class="text-green-600 font-mono">£{{ tx.eligible_amount|number_format(2) }}</span>
+                            {% if permissions.giftaid_manage_claims %}
                             <button type="button" 
                                     onclick="document.getElementById('amount_{{ tx.id }}').value = '{{ tx.eligible_amount }}'"
                                     class="ml-1 text-xs text-blue-600 hover:text-blue-800">
                                 Use
                             </button>
+                            {% endif %}
                         {% else %}
                             <span class="text-gray-400">—</span>
                         {% endif %}
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap text-right">
+                        {% if permissions.giftaid_manage_claims %}
                         <div class="flex items-center justify-end space-x-2">
                             <span class="text-gray-500">£</span>
                             <input type="number" 
@@ -175,12 +182,16 @@
                                 Max
                             </button>
                         </div>
+                        {% else %}
+                        <span class="text-sm text-gray-400 font-mono">{{ tx.giftaid_amount is defined ? '£' ~ tx.giftaid_amount|number_format(2) : '—' }}</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
+        {% if permissions.giftaid_manage_claims %}
         <div class="px-4 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
             <p class="text-sm text-gray-500">
                 {{ needs_amount_confirmation|length }} transaction{{ needs_amount_confirmation|length != 1 ? 's' : '' }} to confirm
@@ -197,9 +208,11 @@
                 </button>
             </div>
         </div>
+        {% endif %}
     </form>
 </div>
 
+{% if permissions.giftaid_manage_claims %}
 <script>
 function confirmAll() {
     {% for tx in needs_amount_confirmation %}
@@ -207,6 +220,7 @@ function confirmAll() {
     {% endfor %}
 }
 </script>
+{% endif %}
 {% endif %}
 
 {% endif %}

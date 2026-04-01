@@ -229,8 +229,7 @@ return function (App $app) {
         // Gift Aid (requires giftaid module)
         $group->group('/giftaid', function (RouteCollectorProxy $giftaid) {
             $giftaid->get('', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':index');
-            $giftaid->get('/review', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':review')
-                ->add(new PermissionMiddleware('giftaid.manage_claims'));
+            $giftaid->get('/review', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':review');
             $giftaid->post('/review', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':confirmAmounts')
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));
             $giftaid->get('/corrections/create', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':createCorrection')
@@ -251,7 +250,7 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));
             $giftaid->post('/claims/{id}/unsubmit', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':unsubmitClaim')
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));
-        })->add(new ModuleMiddleware('giftaid'));
+        })->add(new PermissionMiddleware('giftaid.view'))->add(new ModuleMiddleware('giftaid'));
 
         // Reports (requires reports module)
         $group->group('/reports', function (RouteCollectorProxy $reports) {
