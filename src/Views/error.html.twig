@@ -1,0 +1,25 @@
+{% extends "layouts/base.html.twig" %}
+
+{% block title %}{{ title }} · {{ app_name }}{% endblock %}
+
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-[70vh]">
+    <div class="text-center px-6 py-12">
+        <h1 class="text-6xl font-bold text-gray-300">{{ status_code }}</h1>
+        <h2 class="mt-4 text-2xl font-semibold text-gray-700">{{ title }}</h2>
+        <p class="mt-2 text-gray-500">{{ message }}</p>
+        {% if debug_detail %}
+        <div class="mt-6 text-left max-w-2xl mx-auto bg-red-50 border border-red-200 rounded-lg p-4">
+            <p class="text-sm text-red-800"><strong>Type:</strong> {{ debug_detail.type }}</p>
+            <p class="text-sm text-red-800"><strong>File:</strong> {{ debug_detail.file }}:{{ debug_detail.line }}</p>
+            <pre class="mt-2 text-xs text-red-700 overflow-x-auto">{{ debug_detail.trace }}</pre>
+        </div>
+        {% endif %}
+        <div class="mt-8">
+            <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 text-sm">← Go back</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -274,7 +274,9 @@ $app = AppFactory::create();
 // Add error middleware with custom error handler
 $errorMiddleware = $app->addErrorMiddleware($debugMode, true, true);
 
-// Set custom error handler to log errors
+// Set custom error handler to log errors and show user-friendly messages
+// $twig is captured by reference and assigned after Twig is created below
+$twig = null;
 $logger = $container->get(Logger::class);
 $errorMiddleware->setDefaultErrorHandler(function (
     \Psr\Http\Message\ServerRequestInterface $request,
@@ -282,35 +284,72 @@ $errorMiddleware->setDefaultErrorHandler(function (
     bool $displayErrorDetails,
     bool $logErrors,
     bool $logErrorDetails
-) use ($app, $logger, $debugMode) {
-    // Log the error
-    $logger->error($exception->getMessage(), [
+) use ($app, $logger, $debugMode, &$twig) {
+    $isAppException = $exception instanceof \CharityCashbook\Core\Exceptions\AppException;
+    $statusCode = $isAppException ? $exception->getHttpStatus() : 500;
+
+    // Map status codes to user-friendly titles and default messages
+    $errorInfo = match ($statusCode) {
+        401 => ['title' => 'Not Authenticated', 'message' => 'You need to log in to access this page.'],
+        403 => ['title' => 'Access Denied', 'message' => $exception->getMessage() ?: 'You do not have permission to access this page.'],
+        404 => ['title' => 'Not Found', 'message' => $exception->getMessage() ?: 'The page you are looking for could not be found.'],
+        422 => ['title' => 'Invalid Request', 'message' => $exception->getMessage() ?: 'The submitted data was invalid.'],
+        default => ['title' => 'Something Went Wrong', 'message' => 'An unexpected error occurred. Please try again later.'],
+    };
+
+    // Only log unexpected errors (5xx) at error level; client errors at warning
+    $logContext = [
         'file' => $exception->getFile(),
         'line' => $exception->getLine(),
         'code' => $exception->getCode(),
         'trace' => $debugMode ? $exception->getTraceAsString() : null,
         'url' => (string) $request->getUri(),
         'method' => $request->getMethod(),
-    ]);
+    ];
+    if ($statusCode >= 500) {
+        $logger->error($exception->getMessage(), $logContext);
+    } else {
+        $logger->warning($exception->getMessage(), $logContext);
+    }
 
     $response = $app->getResponseFactory()->createResponse();
-    
-    if ($debugMode) {
-        // Show detailed error in debug mode
-        $response->getBody()->write('<h1>Error</h1>');
-        $response->getBody()->write('<p><strong>Type:</strong> ' . get_class($exception) . '</p>');
-        $response->getBody()->write('<p><strong>Code:</strong> ' . $exception->getCode() . '</p>');
-        $response->getBody()->write('<p><strong>Message:</strong> ' . htmlspecialchars($exception->getMessage()) . '</p>');
-        $response->getBody()->write('<p><strong>File:</strong> ' . $exception->getFile() . '</p>');
-        $response->getBody()->write('<p><strong>Line:</strong> ' . $exception->getLine() . '</p>');
-        $response->getBody()->write('<pre>' . htmlspecialchars($exception->getTraceAsString()) . '</pre>');
-    } else {
-        // Show generic error in production
-        $response->getBody()->write('<h1>Something went wrong</h1>');
-        $response->getBody()->write('<p>An error occurred. Please try again later.</p>');
+
+    // Try rendering the Twig error template; fall back to plain HTML
+    $rendered = false;
+    if ($twig !== null) {
+        try {
+            $templateData = [
+                'status_code' => $statusCode,
+                'title' => $errorInfo['title'],
+                'message' => $errorInfo['message'],
+                'debug_detail' => $debugMode ? [
+                    'type' => get_class($exception),
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                    'trace' => $exception->getTraceAsString(),
+                ] : null,
+            ];
+            $html = $twig->getEnvironment()->render('error.html.twig', $templateData);
+            $response->getBody()->write($html);
+            $rendered = true;
+        } catch (\Throwable $renderException) {
+            $logger->warning('Failed to render error template: ' . $renderException->getMessage());
+        }
     }
-    
-    return $response->withStatus(500)->withHeader('Content-Type', 'text/html');
+
+    if (!$rendered) {
+        // Fallback: plain HTML if Twig is unavailable or template rendering fails
+        $title = htmlspecialchars($errorInfo['title']);
+        $message = htmlspecialchars($errorInfo['message']);
+        $response->getBody()->write("<h1>{$statusCode} — {$title}</h1><p>{$message}</p>");
+        if ($debugMode) {
+            $response->getBody()->write('<p><strong>Type:</strong> ' . get_class($exception) . '</p>');
+            $response->getBody()->write('<p><strong>File:</strong> ' . $exception->getFile() . ':' . $exception->getLine() . '</p>');
+            $response->getBody()->write('<pre>' . htmlspecialchars($exception->getTraceAsString()) . '</pre>');
+        }
+    }
+
+    return $response->withStatus($statusCode)->withHeader('Content-Type', 'text/html');
 });
 
 // Create Twig view
