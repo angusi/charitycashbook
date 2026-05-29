@@ -100,8 +100,8 @@
                                     </p>
                                 </div>
                                 <div class="text-right">
-                                    <p class="text-sm font-medium {{ t.transaction_type == 'receipt' ? 'text-green-600' : 'text-red-600' }}">
-                                        {{ t.transaction_type == 'receipt' ? '+' : '-' }}£{{ t.amount|number_format(2) }}
+                                    <p class="text-sm font-medium {{ t.cashbook_amount >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                                        {{ t.cashbook_amount >= 0 ? '+' : '-' }}£{{ t.cashbook_amount|abs|number_format(2) }}
                                     </p>
                                     {% if t.is_reconciled %}
                                         <span class="text-xs text-green-600">✓ Reconciled</span>
