@@ -534,8 +534,8 @@ class GiftAidService
     public function getPendingUnderclaims(int $charityId): array
     {
         return $this->db->query(
-            "SELECT gc.*, t.transaction_date, d.name as donor_name, 
-                    d.address_line1, d.postcode as address_postcode
+            "SELECT gc.*, t.transaction_date, d.name as donor_name,
+                    d.address_line1, d.address_postcode
              FROM giftaid_corrections gc
              JOIN transactions t ON t.id = gc.original_transaction_id
              LEFT JOIN donors d ON d.id = t.donor_id
@@ -554,7 +554,7 @@ class GiftAidService
     {
         return $this->db->query(
             "SELECT gc.*, t.transaction_date, d.name as donor_name,
-                    d.address_line1, d.postcode as address_postcode
+                    d.address_line1, d.address_postcode
              FROM giftaid_corrections gc
              JOIN transactions t ON t.id = gc.original_transaction_id
              LEFT JOIN donors d ON d.id = t.donor_id
