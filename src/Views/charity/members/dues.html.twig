@@ -166,6 +166,13 @@
                                     <button type="button" class="text-orange-600 hover:text-orange-800" onclick="showConfirmModal('Reset Dues', 'Reset this dues record to pending?', function() { document.getElementById('undo-dues-form-{{ due.id }}').submit(); })">Undo</button>
                                 </form>
                             {% endif %}
+                            {% if due.amount_paid == 0 and not due.transaction_id %}
+                                <form id="delete-dues-form-{{ due.id }}" method="post" action="/charity/{{ charity.id }}/members/dues/{{ due.id }}/delete" class="inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="return_to" value="/charity/{{ charity.id }}/members/dues?period={{ filters.period_label }}&status={{ filters.status }}">
+                                    <button type="button" class="text-red-600 hover:text-red-800 ml-3" onclick="confirmAndSubmit('delete-dues-form-{{ due.id }}', 'Delete Dues', 'Permanently delete this dues record? This cannot be undone.')">Delete</button>
+                                </form>
+                            {% endif %}
                         {% endif %}
                     </td>
                 </tr>

@@ -279,7 +279,7 @@ class MemberService
     {
         // Delete dues first
         $this->db->execute(
-            "DELETE FROM member_dues WHERE member_id = ?",
+            "DELETE FROM membership_dues WHERE member_id = ?",
             [$memberId]
         );
 
@@ -709,6 +709,27 @@ class MemberService
         $this->db->execute(
             "UPDATE membership_dues SET status = ?, amount_paid = 0, notes = CONCAT(COALESCE(notes, ''), '\nStatus reset to pending') WHERE id = ?",
             [$newStatus, $duesId]
+        );
+    }
+
+    /**
+     * Delete a dues record (e.g. one created with the wrong period).
+     * Only allowed when no payment has been recorded against it.
+     */
+    public function deleteDues(int $duesId, int $charityId): void
+    {
+        $dues = $this->getDuesRecord($duesId, $charityId);
+        if (!$dues) {
+            throw new ValidationException(['Dues record not found']);
+        }
+
+        if ((float) $dues['amount_paid'] > 0 || $dues['transaction_id']) {
+            throw new ValidationException(['Cannot delete dues with a payment recorded. Undo the payment first.']);
+        }
+
+        $this->db->execute(
+            "DELETE FROM membership_dues WHERE id = ? AND charity_id = ?",
+            [$duesId, $charityId]
         );
     }
 

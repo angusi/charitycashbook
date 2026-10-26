@@ -775,11 +775,47 @@ class MemberController extends BaseController
             $auditService->log($charityId, $userId, 'dues_status_reset', 'membership_dues', $duesId);
             
             $this->flash('success', 'Dues status reset to pending.');
-            
+
         } catch (ValidationException $e) {
             $this->flash('error', implode(', ', $e->getErrors()));
         }
-        
+
+        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
+        return $this->redirect($response, $returnTo);
+    }
+
+    /**
+     * Delete a dues record
+     */
+    public function deleteDues(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = $request->getAttribute('user_id');
+        $duesId = (int) $args['dues_id'];
+        $data = $this->getPostData($request);
+
+        try {
+            $memberService = $this->get(MemberService::class);
+            $auditService = $this->get(AuditService::class);
+
+            $dues = $memberService->getDuesRecord($duesId, $charityId);
+            $memberService->deleteDues($duesId, $charityId);
+
+            $auditService->log($charityId, $userId, 'dues_deleted', 'membership_dues', $duesId, [
+                'member_id' => $dues['member_id'] ?? null,
+                'period_start' => $dues['period_start'] ?? null,
+                'period_end' => $dues['period_end'] ?? null,
+                'period_label' => $dues['period_label'] ?? null,
+                'amount_due' => $dues['amount_due'] ?? null,
+                'status' => $dues['status'] ?? null,
+            ]);
+
+            $this->flash('success', 'Dues record deleted.');
+
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(', ', $e->getErrors()));
+        }
+
         $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
         return $this->redirect($response, $returnTo);
     }

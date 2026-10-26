@@ -315,6 +315,8 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('members.manage_dues'));
             $members->post('/dues/{dues_id}/undo', \CharityCashbook\Charity\Controllers\MemberController::class . ':undoDues')
                 ->add(new PermissionMiddleware('members.manage_dues'));
+            $members->post('/dues/{dues_id}/delete', \CharityCashbook\Charity\Controllers\MemberController::class . ':deleteDues')
+                ->add(new PermissionMiddleware('members.manage_dues'));
             $members->post('/trustee-role/{role_id}/end', \CharityCashbook\Charity\Controllers\MemberController::class . ':endTrusteeRole')
                 ->add(new PermissionMiddleware('members.manage_trustees'));
             $members->post('/trustee-role/{role_id}/update', \CharityCashbook\Charity\Controllers\MemberController::class . ':updateTrusteeRole')

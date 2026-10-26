@@ -921,6 +921,68 @@ class MemberServiceTest extends TestCase
         $this->service->undoDuesStatus(999, 1);
     }
 
+    // deleteDues tests
+    public function testDeleteDuesDeletesUnpaidRecord(): void
+    {
+        $this->db->method('queryOne')->willReturn([
+            'id' => 1,
+            'charity_id' => 5,
+            'amount_paid' => 0,
+            'transaction_id' => null,
+            'status' => 'waived',
+        ]);
+
+        $this->db->expects($this->once())
+            ->method('execute')
+            ->with(
+                $this->stringContains('DELETE FROM membership_dues'),
+                [1, 5]
+            );
+
+        $this->service->deleteDues(1, 5);
+    }
+
+    public function testDeleteDuesThrowsWhenPaymentRecorded(): void
+    {
+        $this->db->method('queryOne')->willReturn([
+            'id' => 1,
+            'charity_id' => 5,
+            'amount_paid' => 25.00,
+            'transaction_id' => null,
+            'status' => 'partial',
+        ]);
+        $this->db->expects($this->never())->method('execute');
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->deleteDues(1, 5);
+    }
+
+    public function testDeleteDuesThrowsWhenLinkedToTransaction(): void
+    {
+        $this->db->method('queryOne')->willReturn([
+            'id' => 1,
+            'charity_id' => 5,
+            'amount_paid' => 0,
+            'transaction_id' => 42,
+            'status' => 'pending',
+        ]);
+        $this->db->expects($this->never())->method('execute');
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->deleteDues(1, 5);
+    }
+
+    public function testDeleteDuesThrowsForNotFound(): void
+    {
+        $this->db->method('queryOne')->willReturn(null);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service->deleteDues(999, 1);
+    }
+
     // getStatistics tests
     public function testGetStatisticsReturnsAllFields(): void
     {
