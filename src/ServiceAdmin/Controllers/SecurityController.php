@@ -8,6 +8,8 @@ use CharityCashbook\Core\Controllers\BaseController;
 use CharityCashbook\ServiceAdmin\ServiceMetricsService;
 use CharityCashbook\Auth\SessionManager;
 use CharityCashbook\Core\Database;
+use CharityCashbook\ServiceAdmin\UserAdminService;
+use CharityCashbook\Core\Exceptions\ValidationException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Views\Twig;
@@ -68,38 +70,7 @@ class SecurityController extends BaseController
      */
     public function terminateSessions(Request $request, Response $response, array $args): Response
     {
-        $userId = (int) $args['user_id'];
-        $session = $request->getAttribute('session');
-        
-        $sessionManager = $this->get(SessionManager::class);
-        $db = $this->get(Database::class);
-
-        // Get user info for audit
-        $user = $db->queryOne("SELECT display_name, primary_email FROM users WHERE id = ?", [$userId]);
-        if (!$user) {
-            $this->flash('error', 'User not found.');
-            return $this->redirect($response, '/service-admin/security');
-        }
-
-        // Terminate all sessions
-        $count = $sessionManager->destroyAllForUser($userId);
-
-        // Log the action
-        $db->insert('audit_log', [
-            'charity_id' => null,
-            'user_id' => $session->getUserId(),
-            'action' => 'security_terminate_sessions',
-            'entity_type' => 'user',
-            'entity_id' => $userId,
-            'details' => json_encode([
-                'target_user' => $user['primary_email'],
-                'sessions_terminated' => $count,
-                'reason' => 'security_investigation',
-            ]),
-        ]);
-
-        $this->flash('success', "Terminated {$count} session(s) for {$user['display_name']}.");
-        return $this->redirect($response, '/service-admin/security?email=' . urlencode($user['primary_email']));
+        return $this->runUserAction($request, $response, (int) $args['user_id'], 'terminate');
     }
 
     /**
@@ -107,46 +78,7 @@ class SecurityController extends BaseController
      */
     public function disableUser(Request $request, Response $response, array $args): Response
     {
-        $userId = (int) $args['user_id'];
-        $session = $request->getAttribute('session');
-        
-        $db = $this->get(Database::class);
-        $sessionManager = $this->get(SessionManager::class);
-
-        // Get user info
-        $user = $db->queryOne("SELECT display_name, primary_email, is_super_admin FROM users WHERE id = ?", [$userId]);
-        if (!$user) {
-            $this->flash('error', 'User not found.');
-            return $this->redirect($response, '/service-admin/security');
-        }
-
-        // Don't allow disabling super admins through this interface
-        if ($user['is_super_admin']) {
-            $this->flash('error', 'Cannot disable a super admin through security tools.');
-            return $this->redirect($response, '/service-admin/security?email=' . urlencode($user['primary_email']));
-        }
-
-        // Disable the user
-        $db->execute("UPDATE users SET is_active = FALSE WHERE id = ?", [$userId]);
-
-        // Terminate all their sessions
-        $sessionManager->destroyAllForUser($userId);
-
-        // Log the action
-        $db->insert('audit_log', [
-            'charity_id' => null,
-            'user_id' => $session->getUserId(),
-            'action' => 'security_disable_user',
-            'entity_type' => 'user',
-            'entity_id' => $userId,
-            'details' => json_encode([
-                'target_user' => $user['primary_email'],
-                'reason' => 'security_investigation',
-            ]),
-        ]);
-
-        $this->flash('success', "Disabled account for {$user['display_name']} and terminated all sessions.");
-        return $this->redirect($response, '/service-admin/security?email=' . urlencode($user['primary_email']));
+        return $this->runUserAction($request, $response, (int) $args['user_id'], 'disable');
     }
 
     /**
@@ -154,34 +86,49 @@ class SecurityController extends BaseController
      */
     public function enableUser(Request $request, Response $response, array $args): Response
     {
-        $userId = (int) $args['user_id'];
-        $session = $request->getAttribute('session');
-        
-        $db = $this->get(Database::class);
+        return $this->runUserAction($request, $response, (int) $args['user_id'], 'enable');
+    }
 
-        // Get user info
-        $user = $db->queryOne("SELECT display_name, primary_email FROM users WHERE id = ?", [$userId]);
-        if (!$user) {
-            $this->flash('error', 'User not found.');
-            return $this->redirect($response, '/service-admin/security');
+    /**
+     * Shared implementation, also used by ConfirmActionController
+     */
+    public static function performUserAction(
+        UserAdminService $service,
+        int $userId,
+        int $adminUserId,
+        int $currentSessionId,
+        string $action
+    ): string {
+        $user = $service->getUser($userId);
+
+        switch ($action) {
+            case 'terminate':
+                $count = $service->terminateSessions($userId, $adminUserId, $currentSessionId, 'security_investigation');
+                return "Terminated {$count} session(s) for {$user['display_name']}.";
+            case 'disable':
+                $service->disableUser($userId, $adminUserId);
+                return "Disabled account for {$user['display_name']} and ended their sessions.";
+            case 'enable':
+                $service->enableUser($userId, $adminUserId);
+                return "Re-enabled account for {$user['display_name']}.";
         }
 
-        // Enable the user
-        $db->execute("UPDATE users SET is_active = TRUE WHERE id = ?", [$userId]);
+        throw new \InvalidArgumentException("Unknown action: $action");
+    }
 
-        // Log the action
-        $db->insert('audit_log', [
-            'charity_id' => null,
-            'user_id' => $session->getUserId(),
-            'action' => 'security_enable_user',
-            'entity_type' => 'user',
-            'entity_id' => $userId,
-            'details' => json_encode([
-                'target_user' => $user['primary_email'],
-            ]),
-        ]);
+    private function runUserAction(Request $request, Response $response, int $userId, string $action): Response
+    {
+        $session = $request->getAttribute('session');
+        $service = $this->get(UserAdminService::class);
 
-        $this->flash('success', "Re-enabled account for {$user['display_name']}.");
-        return $this->redirect($response, '/service-admin/security?email=' . urlencode($user['primary_email']));
+        try {
+            $message = self::performUserAction($service, $userId, $session->getUserId(), $session->getId(), $action);
+            $this->flash('success', $message);
+            $user = $service->getUser($userId);
+            return $this->redirect($response, '/service-admin/security?email=' . urlencode($user['primary_email']));
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(' ', $e->getErrors()));
+            return $this->redirect($response, '/service-admin/security');
+        }
     }
 }

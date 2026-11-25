@@ -19,6 +19,9 @@ return [
         'url' => getenv('APP_URL') ?: 'http://localhost',
         'debug' => filter_var(getenv('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN),
         'timezone' => 'Europe/London',
+        // IP addresses of reverse proxies allowed to set X-Forwarded-For (e.g. ['127.0.0.1']).
+        // Leave empty when the app is not behind a proxy.
+        'trusted_proxies' => array_values(array_filter(array_map('trim', explode(',', getenv('TRUSTED_PROXIES') ?: '')))),
     ],
     'session' => [
         'name' => 'charity_cashbook_session',

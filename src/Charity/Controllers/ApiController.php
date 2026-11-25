@@ -41,7 +41,7 @@ class ApiController extends BaseController
         $results = array_map(function ($d) {
             return [
                 'id' => $d['id'],
-                'name' => $d['display_name'],
+                'name' => $d['name'],
                 'has_declaration' => $d['has_active_declaration'],
             ];
         }, $donors);

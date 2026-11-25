@@ -32,6 +32,9 @@ class ServiceAdminSensitiveActionMiddleware implements MiddlewareInterface
         'POST /service-admin/maintenance/force-global-reauth' => 'force_global_reauth',
         'POST /service-admin/privacy/users/{id}/delete' => 'delete_user_data',
         'POST /service-admin/privacy/users/{id}/terminate-sessions' => 'terminate_user_sessions',
+        'POST /service-admin/security/users/{user_id}/terminate-sessions' => 'security_terminate_sessions',
+        'POST /service-admin/security/users/{user_id}/disable' => 'disable_user',
+        'POST /service-admin/security/users/{user_id}/enable' => 'enable_user',
     ];
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -74,6 +77,12 @@ class ServiceAdminSensitiveActionMiddleware implements MiddlewareInterface
             }
         }
         
+        // Carry the explicit confirmation checkbox through for destructive actions
+        $body = $request->getParsedBody();
+        if (is_array($body) && !empty($body['confirm'])) {
+            $params['confirm'] = true;
+        }
+
         // Determine cancel URL from referer or default
         $referer = $request->getHeaderLine('Referer');
         $refererPath = $referer ? parse_url($referer, PHP_URL_PATH) : null;

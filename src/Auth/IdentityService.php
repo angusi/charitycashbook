@@ -24,8 +24,12 @@ class IdentityService
 
     /**
      * Resolve an OAuth identity to an internal user
+     *
+     * An identity already linked by provider subject always resolves. Otherwise the email
+     * address is only used (to match an existing user, or to authorise access to a charity)
+     * when the provider has verified it - see OAuthProviderService::isEmailVerified().
      */
-    public function resolveIdentity(int $providerId, string $oauthSubject, string $oauthEmail): array
+    public function resolveIdentity(int $providerId, string $oauthSubject, string $oauthEmail, bool $emailVerified): array
     {
         // 1. Look for existing identity by OAuth subject
         $identity = $this->findIdentity($providerId, $oauthSubject);
@@ -41,6 +45,18 @@ class IdentityService
                 'user' => $user,
                 'identity' => $identity,
             ];
+        }
+
+        // Everything below relies on the email address, so it must be verified
+        if (!$emailVerified) {
+            $this->logger->auth('Login rejected - email not verified by provider', [
+                'email' => $oauthEmail,
+                'provider_id' => $providerId,
+            ]);
+            throw new AuthenticationException(
+                'Your sign-in provider did not confirm that you own this email address, so it cannot be used to sign in here. '
+                . 'Ask your administrator to link this login to your account.'
+            );
         }
 
         // 2. Check if a user exists with this email (e.g., created via CLI)

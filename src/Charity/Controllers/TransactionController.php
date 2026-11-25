@@ -40,7 +40,16 @@ class TransactionController extends BaseController
             'category_id' => !empty($params['category_id']) ? (int) $params['category_id'] : null,
             'giftaid_status' => $params['giftaid_status'] ?? null,
             'search' => $params['search'] ?? null,
+            'needs_review' => !empty($params['needs_review']) ? 1 : null,
         ];
+        if (!in_array($filters['type'], ['receipt', 'payment', 'transfer'], true)) {
+            $filters['type'] = null;
+        }
+        foreach (['date_from', 'date_to'] as $key) {
+            if ($filters[$key] !== null && !\CharityCashbook\Charity\FinancialYear::isValidDate($filters[$key])) {
+                $filters[$key] = null;
+            }
+        }
 
         // Pagination
         $perPage = 50;
@@ -56,25 +65,11 @@ class TransactionController extends BaseController
         $funds = $fundService->getAll($charityId);
         $categories = $categoryService->getOperationalCategories($charityId, $filters['type'] ?? null);
 
-        // Get totals for current filter (not just current page)
-        $totals = $transactionService->getTotals($charityId, [
-            'date_from' => $filters['date_from'],
-            'date_to' => $filters['date_to'],
-            'fund_id' => $filters['fund_id'],
-            'type' => $filters['type'],
-            'category_id' => $filters['category_id'],
-            'search' => $filters['search'],
-        ]);
+        // Totals for the same filters as the list (not just the current page)
+        $totals = $transactionService->getTotals($charityId, $filters);
 
         // Build base URL for pagination (preserve filters)
-        $queryParams = array_filter([
-            'date_from' => $filters['date_from'],
-            'date_to' => $filters['date_to'],
-            'fund_id' => $filters['fund_id'],
-            'type' => $filters['type'],
-            'category_id' => $filters['category_id'],
-            'search' => $filters['search'],
-        ]);
+        $queryParams = array_filter(array_diff_key($filters, ['limit' => 1, 'offset' => 1]));
         $baseUrl = "/charity/$charityId/transactions" . ($queryParams ? '?' . http_build_query($queryParams) : '');
 
         $view = Twig::fromRequest($request);
@@ -87,6 +82,7 @@ class TransactionController extends BaseController
                 'filters' => $filters,
                 'total_receipts' => $totals['receipts'] ?? 0,
                 'total_payments' => $totals['payments'] ?? 0,
+                'total_transfers' => $totals['transfers'] ?? 0,
                 'pagination' => [
                     'current_page' => $page,
                     'total_pages' => $totalPages,
@@ -176,24 +172,7 @@ class TransactionController extends BaseController
         
         try {
             $transactionService = $this->get(TransactionService::class);
-            $id = $transactionService->create($charityId, $userId, [
-                'transaction_type' => $data['type'] ?? null, // Explicitly pass transaction type
-                'transaction_date' => $data['transaction_date'],
-                'amount' => (float) $data['amount'],
-                'description' => $data['description'],
-                'reference' => $data['reference'] ?? null,
-                'fund_id' => (int) ($data['fund_id'] ?? 0),
-                'fund_entries' => $data['fund_entries'] ?? null,
-                'operational_category_id' => (int) ($data['operational_category_id'] ?? $data['category_id'] ?? 0),
-                'category_entries' => $data['category_entries'] ?? null,
-                'donor_id' => !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
-                'has_oneoff_declaration' => !empty($data['has_oneoff_declaration']),
-                'is_gasds' => !empty($data['is_gasds']),
-                'giftaid_eligibility_override' => !empty($data['giftaid_eligibility_override']) ? $data['giftaid_eligibility_override'] : null,
-                'giftaid_amount' => isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '' ? (float) $data['giftaid_amount'] : null,
-                'cash_book_id' => !empty($data['cash_book_id']) ? (int) $data['cash_book_id'] : null,
-                'cashbook_entries' => $data['cashbook_entries'] ?? null,
-            ]);
+            $id = $transactionService->create($charityId, $userId, $this->transactionInput($data));
             
             $this->flash('success', 'Transaction created successfully.');
             return $this->redirect($response, "/charity/$charityId/transactions/$id");
@@ -229,9 +208,22 @@ class TransactionController extends BaseController
             return $this->redirect($response, "/charity/$charityId/transactions/$transactionId");
         }
         
-        $funds = $fundService->getAll($charityId);
+        // Active funds/categories, plus any inactive ones this transaction already uses
+        $usedFundIds = array_map('intval', array_merge(
+            array_column($transaction['fund_entries'], 'fund_id'),
+            array_column($transaction['category_entries'], 'fund_id')
+        ));
+        $funds = array_values(array_filter(
+            $fundService->getAll($charityId, false),
+            fn($f) => $f['is_active'] || in_array((int) $f['id'], $usedFundIds, true)
+        ));
+
+        $usedCategoryIds = array_map('intval', array_column($transaction['category_entries'], 'operational_category_id'));
         $categories = ($transaction['transaction_type'] !== 'transfer')
-            ? $categoryService->getOperationalCategories($charityId, $transaction['transaction_type'])
+            ? array_values(array_filter(
+                $categoryService->getOperationalCategories($charityId, $transaction['transaction_type'], false),
+                fn($c) => ($c['is_active'] && ($c['reporting_category_active'] ?? true)) || in_array((int) $c['id'], $usedCategoryIds, true)
+            ))
             : [];
         $donors = ($transaction['transaction_type'] === 'receipt') ? $donorService->getAll($charityId) : [];
 
@@ -269,24 +261,7 @@ class TransactionController extends BaseController
         
         try {
             $transactionService = $this->get(TransactionService::class);
-            $transactionService->update($transactionId, $charityId, $userId, [
-                'transaction_type' => $data['type'] ?? null, // Explicitly pass transaction type
-                'transaction_date' => $data['transaction_date'],
-                'amount' => (float) $data['amount'],
-                'description' => $data['description'],
-                'reference' => $data['reference'] ?? null,
-                'fund_id' => (int) ($data['fund_id'] ?? 0),
-                'fund_entries' => $data['fund_entries'] ?? null,
-                'operational_category_id' => (int) ($data['operational_category_id'] ?? $data['category_id'] ?? 0),
-                'category_entries' => $data['category_entries'] ?? null,
-                'donor_id' => !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
-                'has_oneoff_declaration' => !empty($data['has_oneoff_declaration']),
-                'is_gasds' => !empty($data['is_gasds']),
-                'giftaid_eligibility_override' => !empty($data['giftaid_eligibility_override']) ? $data['giftaid_eligibility_override'] : null,
-                'giftaid_amount' => isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '' ? (float) $data['giftaid_amount'] : null,
-                'cash_book_id' => !empty($data['cash_book_id']) ? (int) $data['cash_book_id'] : null,
-                'cashbook_entries' => $data['cashbook_entries'] ?? null,
-            ]);
+            $transactionService->update($transactionId, $charityId, $userId, $this->transactionInput($data));
             
             $this->flash('success', 'Transaction updated successfully.');
             return $this->redirect($response, "/charity/$charityId/transactions/$transactionId");
@@ -314,5 +289,34 @@ class TransactionController extends BaseController
             $this->flash('error', implode(', ', $e->getErrors()));
             return $this->redirect($response, "/charity/$charityId/transactions/$transactionId");
         }
+    }
+
+    /**
+     * Map posted form fields to TransactionService input
+     */
+    private function transactionInput(array $data): array
+    {
+        $optionalArray = fn(string $key) => isset($data[$key]) && is_array($data[$key]) ? $data[$key] : null;
+
+        return [
+            'transaction_type' => $data['type'] ?? null,
+            'transaction_date' => $data['transaction_date'] ?? null,
+            // Raw string: validated as pounds and pence by the service
+            'amount' => isset($data['amount']) ? trim((string) $data['amount']) : null,
+            'description' => $data['description'] ?? null,
+            'reference' => $data['reference'] ?? null,
+            'lines' => $optionalArray('lines'),
+            'fund_id' => !empty($data['fund_id']) ? (int) $data['fund_id'] : null,
+            'fund_entries' => $optionalArray('fund_entries'),
+            'operational_category_id' => (int) ($data['operational_category_id'] ?? $data['category_id'] ?? 0) ?: null,
+            'category_entries' => $optionalArray('category_entries'),
+            'donor_id' => !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
+            'has_oneoff_declaration' => !empty($data['has_oneoff_declaration']),
+            'is_gasds' => !empty($data['is_gasds']),
+            'giftaid_eligibility_override' => !empty($data['giftaid_eligibility_override']) ? $data['giftaid_eligibility_override'] : null,
+            'giftaid_amount' => isset($data['giftaid_amount']) && $data['giftaid_amount'] !== '' ? trim((string) $data['giftaid_amount']) : null,
+            'cash_book_id' => !empty($data['cash_book_id']) ? (int) $data['cash_book_id'] : null,
+            'cashbook_entries' => $optionalArray('cashbook_entries'),
+        ];
     }
 }

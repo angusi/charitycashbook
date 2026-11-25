@@ -10,6 +10,10 @@ use CharityCashbook\Charity\FundService;
 use CharityCashbook\Charity\TransactionService;
 use CharityCashbook\Charity\AuditService;
 use CharityCashbook\Charity\ModuleService;
+use CharityCashbook\Charity\BooksLock;
+use CharityCashbook\Charity\FinancialYear;
+use CharityCashbook\Core\Money;
+use CharityCashbook\Core\Exceptions\ValidationException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Views\Twig;
@@ -234,9 +238,9 @@ class CashBookController extends BaseController
         $cashBookId = (int) $args['id'];
 
         $cashBookService = $this->get(CashBookService::class);
-        $cashBook = $cashBookService->getCashBook($cashBookId);
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
 
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        if (!$cashBook) {
             $this->flash('error', 'Cash book not found.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks");
         }
@@ -275,9 +279,9 @@ class CashBookController extends BaseController
         $cashBookId = (int) $args['id'];
 
         $cashBookService = $this->get(CashBookService::class);
-        $cashBook = $cashBookService->getCashBook($cashBookId);
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
 
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        if (!$cashBook) {
             $this->flash('error', 'Cash book not found.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks");
         }
@@ -302,20 +306,45 @@ class CashBookController extends BaseController
         $cashBookService = $this->get(CashBookService::class);
         $auditService = $this->get(AuditService::class);
 
-        $cashBook = $cashBookService->getCashBook($cashBookId);
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
+        if (!$cashBook) {
             $this->flash('error', 'Cash book not found.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks");
         }
 
         try {
-            $cashBookService->update($cashBookId, [
+            $openingBalance = trim((string) ($data['opening_balance'] ?? '0'));
+            if ($openingBalance === '') {
+                $openingBalance = '0';
+            }
+            if (!Money::isValid($openingBalance)) {
+                throw new ValidationException(['Opening balance must be an amount in pounds and pence']);
+            }
+            $openingBalance = Money::normalise($openingBalance);
+            if (!FinancialYear::isValidDate($data['opening_balance_date'] ?? null)) {
+                throw new ValidationException(['Opening balance date must be a valid date']);
+            }
+
+            // Year-end close: the opening balance cannot be changed if it affects a closed year
+            $lockedUntil = $charity['books_locked_until'] ?? null;
+            $openingChanged = !Money::equals($openingBalance, $cashBook['opening_balance'])
+                || $data['opening_balance_date'] !== $cashBook['opening_balance_date'];
+            if ($lockedUntil && $openingChanged && (
+                BooksLock::isLocked($lockedUntil, $cashBook['opening_balance_date'])
+                || BooksLock::isLocked($lockedUntil, $data['opening_balance_date'])
+            )) {
+                throw new ValidationException([
+                    "This cash book's opening balance is in a closed financial year (up to $lockedUntil), so it cannot be changed",
+                ]);
+            }
+
+            $cashBookService->update($cashBookId, $charity['id'], [
                 'name' => $data['name'],
                 'book_type' => $data['book_type'],
                 'description' => $data['description'] ?? null,
                 'account_number' => $data['account_number'] ?? null,
                 'sort_code' => $data['sort_code'] ?? null,
-                'opening_balance' => $data['opening_balance'],
+                'opening_balance' => $openingBalance,
                 'opening_balance_date' => $data['opening_balance_date'],
                 'is_active' => isset($data['is_active']),
             ]);
@@ -331,6 +360,9 @@ class CashBookController extends BaseController
 
             $this->flash('success', 'Cash book updated successfully.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}");
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(' ', $e->getErrors()));
+            return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}/edit");
         } catch (\Exception $e) {
             $this->flash('error', 'Failed to update cash book: ' . $e->getMessage());
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}/edit");
@@ -343,9 +375,9 @@ class CashBookController extends BaseController
         $cashBookId = (int) $args['id'];
 
         $cashBookService = $this->get(CashBookService::class);
-        $cashBook = $cashBookService->getCashBook($cashBookId);
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
 
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        if (!$cashBook) {
             $this->flash('error', 'Cash book not found.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks");
         }
@@ -377,13 +409,21 @@ class CashBookController extends BaseController
         $cashBookService = $this->get(CashBookService::class);
         $auditService = $this->get(AuditService::class);
 
-        $cashBook = $cashBookService->getCashBook($cashBookId);
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
+        if (!$cashBook) {
             $this->flash('error', 'Cash book not found.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks");
         }
 
         try {
+            if (!FinancialYear::isValidDate($data['reconciled_date'] ?? null)) {
+                throw new ValidationException(['Statement date must be a valid date']);
+            }
+            if (!Money::isValid(trim((string) ($data['statement_balance'] ?? '')))) {
+                throw new ValidationException(['Statement balance must be an amount in pounds and pence']);
+            }
+            $data['statement_balance'] = Money::normalise(trim((string) $data['statement_balance']));
+
             $reconciliationId = $cashBookService->reconcile($cashBookId, [
                 'reconciled_date' => $data['reconciled_date'],
                 'statement_balance' => $data['statement_balance'],
@@ -405,6 +445,9 @@ class CashBookController extends BaseController
 
             $this->flash('success', 'Reconciliation recorded successfully.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}");
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(' ', $e->getErrors()));
+            return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}/reconcile");
         } catch (\Exception $e) {
             $this->flash('error', 'Failed to record reconciliation: ' . $e->getMessage());
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/{$cashBookId}/reconcile");
@@ -448,13 +491,19 @@ class CashBookController extends BaseController
         }
 
         // Verify cash book belongs to charity
-        $cashBook = $cashBookService->getCashBook($cashBookId);
-        if (!$cashBook || $cashBook['charity_id'] !== $charity['id']) {
+        $cashBook = $cashBookService->getCashBookForCharity($cashBookId, $charity['id']);
+        if (!$cashBook) {
             $this->flash('error', 'Invalid cash book.');
             return $this->redirect($response, "/charity/{$charity['id']}/cashbooks/unlinked");
         }
 
-        $count = $cashBookService->assignTransactions($transactionIds, $cashBookId);
+        if (!is_array($transactionIds)) {
+            $transactionIds = [$transactionIds];
+        }
+        $transactionIds = array_values(array_unique(array_map('intval', $transactionIds)));
+
+        // Only this charity's unassigned receipts/payments are assigned; anything else is skipped
+        $count = $cashBookService->assignTransactions($charity['id'], $transactionIds, $cashBookId);
 
         $auditService->log(
             $charity['id'],

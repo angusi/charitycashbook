@@ -158,6 +158,7 @@ class PermissionService
                 'members.view_list',
                 'members.view_detail',
                 'giftaid.view',
+                'cashbooks.view',
                 'funds.view',
                 'categories.view',
                 'reports.view',

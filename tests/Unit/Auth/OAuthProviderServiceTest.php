@@ -477,4 +477,49 @@ class OAuthProviderServiceTest extends TestCase
         $result = $this->service->verifyState($state);
         $this->assertFalse($result);
     }
+
+    // ===========================================
+    // isEmailVerified() tests
+    // ===========================================
+
+    public function testGoogleRequiresEmailVerifiedClaim(): void
+    {
+        $provider = ['provider_type' => 'google'];
+        $this->assertTrue($this->service->isEmailVerified($provider, ['email_verified' => true]));
+        $this->assertTrue($this->service->isEmailVerified($provider, ['email_verified' => 'true']));
+        $this->assertFalse($this->service->isEmailVerified($provider, ['email_verified' => false]));
+        $this->assertFalse($this->service->isEmailVerified($provider, []));
+    }
+
+    public function testOidcRequiresEmailVerifiedClaim(): void
+    {
+        $provider = ['provider_type' => 'oidc'];
+        $this->assertTrue($this->service->isEmailVerified($provider, ['email_verified' => true]));
+        $this->assertFalse($this->service->isEmailVerified($provider, ['email' => 'a@b.c']));
+    }
+
+    public function testMicrosoftMultiTenantEmailIsNotTrusted(): void
+    {
+        foreach ([null, '', 'common', 'organizations', 'consumers', 'COMMON'] as $tenant) {
+            $provider = ['provider_type' => 'microsoft', 'tenant_id' => $tenant];
+            $this->assertFalse($this->service->isEmailVerified($provider, ['email' => 'a@b.c']), "tenant: " . var_export($tenant, true));
+        }
+    }
+
+    public function testMicrosoftSingleTenantOrEdovIsTrusted(): void
+    {
+        $this->assertTrue($this->service->isEmailVerified(
+            ['provider_type' => 'microsoft', 'tenant_id' => '11111111-2222-3333-4444-555555555555'],
+            []
+        ));
+        $this->assertTrue($this->service->isEmailVerified(
+            ['provider_type' => 'microsoft', 'tenant_id' => 'common'],
+            ['xms_edov' => true]
+        ));
+    }
+
+    public function testUnknownProviderTypeIsNotTrusted(): void
+    {
+        $this->assertFalse($this->service->isEmailVerified(['provider_type' => 'other'], ['email_verified' => true]));
+    }
 }

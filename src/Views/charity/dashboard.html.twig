@@ -11,6 +11,7 @@
 {% include 'components/flash.html.twig' %}
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    {% if permissions.funds_view %}
     <!-- Total Balance -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
@@ -23,7 +24,9 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
+    {% if permissions.reports_view %}
     <!-- Receipts YTD -->
     <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
@@ -53,6 +56,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     {% if permissions.giftaid_view %}
     <!-- Gift Aid Claimable -->
@@ -92,6 +96,7 @@
                 <p class="mt-2 text-sm font-medium text-gray-900">New Payment</p>
             </a>
         {% endif %}
+        {% if permissions.reports_view %}
         <a href="/charity/{{ charity.id }}/reports/receipts-payments" 
            class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
             <svg class="mx-auto h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -99,6 +104,7 @@
             </svg>
             <p class="mt-2 text-sm font-medium text-gray-900">R&P Report</p>
         </a>
+        {% endif %}
         {% if permissions.giftaid_view %}
         <a href="/charity/{{ charity.id }}/giftaid" 
            class="bg-white rounded-lg shadow p-4 hover:bg-gray-50 text-center">
@@ -112,6 +118,7 @@
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {% if permissions.transactions_view %}
     <!-- Recent Transactions -->
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -151,6 +158,9 @@
         </div>
     </div>
 
+    {% endif %}
+
+    {% if permissions.funds_view %}
     <!-- Fund Balances -->
     <div class="bg-white rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -175,5 +185,6 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

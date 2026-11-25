@@ -223,7 +223,7 @@ class MemberServiceTest extends TestCase
     {
         $this->db->expects($this->once())->method('execute');
 
-        $this->service->updateAddress(1, [
+        $this->service->updateAddress(1, 1, [
             'address_line1' => '123 Street',
             'address_postcode' => 'AB1 2CD',
         ]);
@@ -472,9 +472,20 @@ class MemberServiceTest extends TestCase
     // updateMembershipType tests
     public function testUpdateMembershipTypeExecutesUpdate(): void
     {
-        $this->db->expects($this->once())->method('execute');
+        $this->db->method('queryOne')->willReturn(['id' => 1]);
+        $this->db->expects($this->once())->method('execute')
+            ->with($this->stringContains('AND charity_id = ?'), $this->anything());
 
-        $this->service->updateMembershipType(1, ['name' => 'Updated Type']);
+        $this->service->updateMembershipType(1, 1, ['name' => 'Updated Type']);
+    }
+
+    public function testUpdateMembershipTypeRejectsOtherCharitysType(): void
+    {
+        $this->db->method('queryOne')->willReturn(null);
+        $this->db->expects($this->never())->method('execute');
+
+        $this->expectException(\CharityCashbook\Core\Exceptions\ValidationException::class);
+        $this->service->updateMembershipType(99, 1, ['name' => 'Hijacked']);
     }
 
     public function testUpdateMembershipTypeConvertsEmptyStringFeeToZero(): void
@@ -486,7 +497,8 @@ class MemberServiceTest extends TestCase
                 return 1;
             });
 
-        $this->service->updateMembershipType(1, ['name' => 'Free Member', 'annual_fee' => '']);
+        $this->db->method('queryOne')->willReturn(['id' => 1]);
+        $this->service->updateMembershipType(1, 1, ['name' => 'Free Member', 'annual_fee' => '']);
 
         $this->assertEquals(0.0, $executedParams[2]); // annual_fee is 3rd parameter
     }
@@ -500,7 +512,8 @@ class MemberServiceTest extends TestCase
                 return 1;
             });
 
-        $this->service->updateMembershipType(1, ['name' => 'Free Member', 'annual_fee' => null]);
+        $this->db->method('queryOne')->willReturn(['id' => 1]);
+        $this->service->updateMembershipType(1, 1, ['name' => 'Free Member', 'annual_fee' => null]);
 
         $this->assertEquals(0.0, $executedParams[2]);
     }
@@ -514,7 +527,8 @@ class MemberServiceTest extends TestCase
                 return 1;
             });
 
-        $this->service->updateMembershipType(1, ['name' => 'Premium', 'annual_fee' => '50.00']);
+        $this->db->method('queryOne')->willReturn(['id' => 1]);
+        $this->service->updateMembershipType(1, 1, ['name' => 'Premium', 'annual_fee' => '50.00']);
 
         $this->assertEquals(50.00, $executedParams[2]);
     }
@@ -1032,14 +1046,24 @@ class MemberServiceTest extends TestCase
     // linkToDonor tests
     public function testLinkToDonorExecutesUpdate(): void
     {
+        $this->db->method('queryOne')->willReturn(['id' => 5]); // donor belongs to charity
         $this->db->expects($this->once())
             ->method('execute')
             ->with(
                 $this->stringContains('donor_id = ?'),
-                [5, 1]
+                [5, 1, 1]
             );
 
-        $this->service->linkToDonor(1, 5);
+        $this->service->linkToDonor(1, 1, 5);
+    }
+
+    public function testLinkToDonorRejectsDonorFromAnotherCharity(): void
+    {
+        $this->db->method('queryOne')->willReturn(null);
+        $this->db->expects($this->never())->method('execute');
+
+        $this->expectException(\CharityCashbook\Core\Exceptions\ValidationException::class);
+        $this->service->linkToDonor(1, 1, 999);
     }
 
     // unlinkFromDonor tests
@@ -1049,10 +1073,10 @@ class MemberServiceTest extends TestCase
             ->method('execute')
             ->with(
                 $this->stringContains('donor_id = NULL'),
-                [1]
+                [1, 1]
             );
 
-        $this->service->unlinkFromDonor(1);
+        $this->service->unlinkFromDonor(1, 1);
     }
 
     // getByDonorId tests
@@ -1060,7 +1084,7 @@ class MemberServiceTest extends TestCase
     {
         $this->db->method('queryOne')->willReturn(['id' => 1, 'name' => 'John']);
 
-        $result = $this->service->getByDonorId(5);
+        $result = $this->service->getByDonorId(5, 1);
 
         $this->assertEquals('John', $result['name']);
     }
@@ -1069,7 +1093,7 @@ class MemberServiceTest extends TestCase
     {
         $this->db->method('queryOne')->willReturn(null);
 
-        $result = $this->service->getByDonorId(999);
+        $result = $this->service->getByDonorId(999, 1);
 
         $this->assertNull($result);
     }

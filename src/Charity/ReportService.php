@@ -5,454 +5,405 @@ declare(strict_types=1);
 namespace CharityCashbook\Charity;
 
 use CharityCashbook\Core\DatabaseInterface;
+use CharityCashbook\Core\Money;
 
 /**
  * Service for generating reports
+ *
+ * Every report is built from the same two sources so that they always agree:
+ * - categoryFundTotals(): receipts/payments per operational category per fund for a period
+ * - FundService::balanceAt()/movement(): fund opening/closing balances and transfers
+ *
+ * Both apply the same rules: deleted transactions are ignored, only transactions in the
+ * period are counted, and transactions dated on or before a fund's opening-balance date
+ * are ignored (they are already in its opening balance). Receipts and payments are
+ * classified by transaction type, exactly as fund balances are. Hidden categories and
+ * inactive funds are included whenever they have activity or a balance.
+ *
+ * Therefore, for every fund and every column: opening + receipts - payments
+ * + transfers in - transfers out = closing, and one period's closing is the next
+ * period's opening.
  */
 class ReportService
 {
     private DatabaseInterface $db;
     private FundService $fundService;
     private CategoryService $categoryService;
+    private ?CashBookService $cashBookService;
 
     public function __construct(
         DatabaseInterface $db,
         FundService $fundService,
-        CategoryService $categoryService
+        CategoryService $categoryService,
+        ?CashBookService $cashBookService = null
     ) {
         $this->db = $db;
         $this->fundService = $fundService;
         $this->categoryService = $categoryService;
+        $this->cashBookService = $cashBookService;
+    }
+
+    // =========================================================================
+    // Building blocks
+    // =========================================================================
+
+    /**
+     * Receipts and payments per operational category per fund, in pence (always positive).
+     *
+     * @return array<int, array{operational_category_id: int, operational_category_name: string,
+     *   oc_display_order: int, reporting_category_id: int, reporting_category_name: string,
+     *   rc_display_order: int, side: string, fund_id: int, pence: int, transaction_count: int}>
+     */
+    public function categoryFundTotals(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        $rows = $this->db->query(
+            "SELECT
+                tce.operational_category_id,
+                oc.name as operational_category_name,
+                oc.display_order as oc_display_order,
+                oc.reporting_category_id,
+                rc.name as reporting_category_name,
+                rc.display_order as rc_display_order,
+                t.transaction_type as side,
+                tce.fund_id,
+                SUM(CASE WHEN t.transaction_type = 'receipt' THEN tce.amount ELSE -tce.amount END) as total,
+                COUNT(DISTINCT t.id) as transaction_count
+             FROM transaction_category_entries tce
+             JOIN transactions t ON t.id = tce.transaction_id
+             JOIN funds f ON f.id = tce.fund_id
+             JOIN operational_categories oc ON oc.id = tce.operational_category_id
+             JOIN reporting_categories rc ON rc.id = oc.reporting_category_id
+             WHERE t.charity_id = ?
+               AND t.is_deleted = FALSE
+               AND t.transaction_type IN ('receipt', 'payment')
+               AND t.transaction_date >= ?
+               AND t.transaction_date <= ?
+               AND (f.opening_balance_date IS NULL OR t.transaction_date > f.opening_balance_date)
+             GROUP BY tce.operational_category_id, oc.name, oc.display_order, oc.reporting_category_id,
+                      rc.name, rc.display_order, t.transaction_type, tce.fund_id",
+            [$charityId, $dateFrom, $dateTo]
+        );
+
+        return array_map(fn($r) => [
+            'operational_category_id' => (int) $r['operational_category_id'],
+            'operational_category_name' => $r['operational_category_name'],
+            'oc_display_order' => (int) $r['oc_display_order'],
+            'reporting_category_id' => (int) $r['reporting_category_id'],
+            'reporting_category_name' => $r['reporting_category_name'],
+            'rc_display_order' => (int) $r['rc_display_order'],
+            'side' => $r['side'],
+            'fund_id' => (int) $r['fund_id'],
+            'pence' => Money::toPence($r['total']),
+            'transaction_count' => (int) $r['transaction_count'],
+        ], $rows);
     }
 
     /**
-     * Generate Receipts and Payments report
-     * Returns data structured for the R&P template with unrestricted/restricted breakdown
+     * Opening/closing balances and activity for every fund that matters for the period.
+     *
+     * @return array<int, array> fund rows keyed by fund id, each with opening, receipts,
+     *   payments, transfers_in, transfers_out, closing (pence) and the fund columns
      */
-    public function receiptsAndPayments(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo,
-        ?int $fundId = null
-    ): array {
-        $funds = $fundId 
-            ? [$this->fundService->get($fundId, $charityId)]
-            : $this->fundService->getAll($charityId);
+    public function fundPositions(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        $positions = [];
 
-        $reportingCategories = $this->categoryService->getReportingCategories($charityId);
-        
-        // Initialize category totals with unrestricted/restricted breakdown
-        $receipts = [];
-        $payments = [];
-        foreach ($reportingCategories as $cat) {
-            $entry = [
-                'id' => $cat['id'],
-                'name' => $cat['name'],
-                'unrestricted' => 0.0,
-                'restricted' => 0.0,
-                'total' => 0.0,
+        foreach ($this->fundService->getAll($charityId, false) as $fund) {
+            $opening = Money::toPence($this->fundService->balanceAt($fund, FinancialYear::addDays($dateFrom, -1)));
+            $movement = $this->fundService->movement($fund, $dateFrom, $dateTo);
+
+            $position = [
+                'fund' => $fund,
+                'opening' => $opening,
+                'receipts' => Money::toPence($movement['receipts']),
+                'payments' => Money::toPence($movement['payments']),
+                'transfers_in' => Money::toPence($movement['transfers_in']),
+                'transfers_out' => Money::toPence($movement['transfers_out']),
             ];
-            if ($cat['category_type'] === 'receipt') {
-                $receipts[$cat['id']] = $entry;
-            } else {
-                $payments[$cat['id']] = $entry;
+            $position['closing'] = $position['opening'] + $position['receipts'] - $position['payments']
+                + $position['transfers_in'] - $position['transfers_out'];
+
+            $hasFigures = $position['opening'] || $position['receipts'] || $position['payments']
+                || $position['transfers_in'] || $position['transfers_out'] || $position['closing'];
+            if (!$fund['is_active'] && !$hasFigures) {
+                continue;
+            }
+
+            $positions[(int) $fund['id']] = $position;
+        }
+
+        return $positions;
+    }
+
+    /**
+     * Fund types that have at least one fund in the report, in standard order
+     */
+    private function fundTypesUsed(array $positions): array
+    {
+        $used = [];
+        foreach ($positions as $position) {
+            $used[$position['fund']['fund_type']] = true;
+        }
+
+        $types = array_values(array_filter(FundService::FUND_TYPES, fn($t) => isset($used[$t])));
+
+        // Always show the two standard columns, even if one is empty
+        foreach (['unrestricted', 'restricted'] as $standard) {
+            if (!in_array($standard, $types, true)) {
+                $types[] = $standard;
             }
         }
 
-        $totalReceiptsUnrestricted = 0.0;
-        $totalReceiptsRestricted = 0.0;
-        $totalPaymentsUnrestricted = 0.0;
-        $totalPaymentsRestricted = 0.0;
+        return array_values(array_filter(FundService::FUND_TYPES, fn($t) => in_array($t, $types, true)));
+    }
 
-        foreach ($funds as $fund) {
-            $fundReport = $this->generateFundReport(
-                $charityId,
-                $fund,
-                $reportingCategories,
-                $dateFrom,
-                $dateTo
-            );
+    /**
+     * Totals per fund type (and 'total') from fund positions, converted to pounds
+     */
+    private function balanceTotalsByType(array $positions, array $fundTypes): array
+    {
+        $keys = ['opening', 'receipts', 'payments', 'transfers_in', 'transfers_out', 'closing'];
+        $totals = [];
+        foreach ($keys as $key) {
+            $totals[$key] = array_fill_keys($fundTypes, 0) + ['total' => 0];
+        }
 
-            $isRestricted = ($fund['fund_type'] === 'restricted');
-
-            // Accumulate receipts by category
-            foreach ($fundReport['receipts'] as $catId => $data) {
-                if (isset($receipts[$catId])) {
-                    if ($isRestricted) {
-                        $receipts[$catId]['restricted'] += $data['amount'];
-                        $totalReceiptsRestricted += $data['amount'];
-                    } else {
-                        $receipts[$catId]['unrestricted'] += $data['amount'];
-                        $totalReceiptsUnrestricted += $data['amount'];
-                    }
-                    $receipts[$catId]['total'] += $data['amount'];
-                }
-            }
-
-            // Accumulate payments by category
-            foreach ($fundReport['payments'] as $catId => $data) {
-                if (isset($payments[$catId])) {
-                    if ($isRestricted) {
-                        $payments[$catId]['restricted'] += $data['amount'];
-                        $totalPaymentsRestricted += $data['amount'];
-                    } else {
-                        $payments[$catId]['unrestricted'] += $data['amount'];
-                        $totalPaymentsUnrestricted += $data['amount'];
-                    }
-                    $payments[$catId]['total'] += $data['amount'];
-                }
+        foreach ($positions as $position) {
+            $type = $position['fund']['fund_type'];
+            foreach ($keys as $key) {
+                $totals[$key][$type] = ($totals[$key][$type] ?? 0) + $position[$key];
+                $totals[$key]['total'] += $position[$key];
             }
         }
 
-        // Filter out categories with zero totals and convert to indexed array
-        $receipts = array_values(array_filter($receipts, fn($r) => $r['total'] > 0));
-        $payments = array_values(array_filter($payments, fn($p) => $p['total'] > 0));
+        foreach ($totals as $key => $byType) {
+            $totals[$key] = array_map(fn($p) => $p / 100, $byType);
+        }
+
+        $totals['transfers_net'] = [];
+        $totals['net'] = [];
+        foreach (array_merge($fundTypes, ['total']) as $type) {
+            $totals['transfers_net'][$type] = round($totals['transfers_in'][$type] - $totals['transfers_out'][$type], 2);
+            $totals['net'][$type] = round($totals['receipts'][$type] - $totals['payments'][$type], 2);
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Cash book position at the end of the period, for reconciling against fund balances
+     */
+    public function cashPosition(int $charityId, string $asOfDate, float $totalFunds): ?array
+    {
+        if ($this->cashBookService === null) {
+            return null;
+        }
+
+        $books = [];
+        $totalPence = 0;
+        foreach ($this->cashBookService->getCashBooks($charityId, false) as $book) {
+            $balance = $this->cashBookService->calculateBalance((int) $book['id'], $asOfDate);
+            $pence = Money::toPence($balance['current_balance']);
+            if (!$book['is_active'] && $pence === 0) {
+                continue;
+            }
+            $books[] = ['cash_book' => $book, 'balance' => $pence / 100];
+            $totalPence += $pence;
+        }
+
+        if (!$books) {
+            return null;
+        }
 
         return [
-            'period_start' => $dateFrom,
-            'period_end' => $dateTo,
-            'receipts' => $receipts,
-            'payments' => $payments,
-            'total_receipts_unrestricted' => $totalReceiptsUnrestricted,
-            'total_receipts_restricted' => $totalReceiptsRestricted,
-            'total_receipts' => $totalReceiptsUnrestricted + $totalReceiptsRestricted,
-            'total_payments_unrestricted' => $totalPaymentsUnrestricted,
-            'total_payments_restricted' => $totalPaymentsRestricted,
-            'total_payments' => $totalPaymentsUnrestricted + $totalPaymentsRestricted,
+            'cash_books' => $books,
+            'total' => $totalPence / 100,
+            'total_funds' => $totalFunds,
+            'difference' => ($totalPence - Money::toPence($totalFunds)) / 100,
+            'unassigned_count' => $this->cashBookService->countUnassignedTransactions($charityId),
         ];
     }
 
+    // =========================================================================
+    // Reports
+    // =========================================================================
+
     /**
-     * Generate detailed Receipts and Payments report with operational category breakdown
-     * Shows reporting categories with their operational categories underneath
-     *
-     * Pro-rates category amounts based on fund allocation for split transactions,
-     * consistent with generateFundReport() and fundSummary() calculations.
+     * Receipts and Payments account: reporting categories by fund type, with opening
+     * balances, transfers between funds and closing balances.
      */
-    public function detailedReceiptsAndPayments(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo
-    ): array {
-        // Query transactions grouped by operational category and fund type
-        // Pro-rates category amounts based on fund allocation (handles split transactions)
-        $sql = "SELECT
-                    rc.id as reporting_category_id,
-                    rc.name as reporting_category_name,
-                    rc.category_type,
-                    rc.display_order as rc_display_order,
-                    oc.id as operational_category_id,
-                    oc.name as operational_category_name,
-                    oc.display_order as oc_display_order,
-                    f.fund_type,
-                    COALESCE(SUM(
-                        ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
-                            (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
-                            0
-                        ))
-                    ), 0) as total
-                FROM reporting_categories rc
-                JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
-                LEFT JOIN transactions t ON t.id = tce.transaction_id
-                    AND t.charity_id = ?
-                    AND t.is_deleted = FALSE
-                    AND t.transaction_date >= ?
-                    AND t.transaction_date <= ?
-                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
-                LEFT JOIN funds f ON f.id = tfe.fund_id
-                WHERE rc.charity_id = ? AND rc.is_active = TRUE AND oc.is_active = TRUE
-                GROUP BY rc.id, rc.name, rc.category_type, rc.display_order,
-                         oc.id, oc.name, oc.display_order, f.fund_type
-                ORDER BY rc.category_type, rc.display_order, oc.display_order";
+    public function receiptsAndPayments(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        $positions = $this->fundPositions($charityId, $dateFrom, $dateTo);
+        $fundTypes = $this->fundTypesUsed($positions);
+        $fundTypeOf = array_map(fn($p) => $p['fund']['fund_type'], $positions);
 
-        $rows = $this->db->query($sql, [$charityId, $dateFrom, $dateTo, $charityId]);
+        $sides = ['receipt' => [], 'payment' => []];
+        foreach ($this->categoryFundTotals($charityId, $dateFrom, $dateTo) as $row) {
+            $rcId = $row['reporting_category_id'];
+            $type = $fundTypeOf[$row['fund_id']] ?? 'unrestricted';
+            $side = &$sides[$row['side']];
 
-        // Build structured data
-        $receipts = [];
-        $payments = [];
-        $totalReceiptsUnrestricted = 0.0;
-        $totalReceiptsRestricted = 0.0;
-        $totalPaymentsUnrestricted = 0.0;
-        $totalPaymentsRestricted = 0.0;
+            $side[$rcId] ??= [
+                'id' => $rcId,
+                'name' => $row['reporting_category_name'],
+                'display_order' => $row['rc_display_order'],
+                'amounts' => array_fill_keys($fundTypes, 0),
+                'total' => 0,
+            ];
+            $side[$rcId]['amounts'][$type] = ($side[$rcId]['amounts'][$type] ?? 0) + $row['pence'];
+            $side[$rcId]['total'] += $row['pence'];
+            unset($side);
+        }
 
-        foreach ($rows as $row) {
+        $totals = $this->balanceTotalsByType($positions, $fundTypes);
+
+        $report = [
+            'period_start' => $dateFrom,
+            'period_end' => $dateTo,
+            'fund_types' => $fundTypes,
+            'fund_type_labels' => FundService::FUND_TYPE_LABELS,
+            'receipts' => $this->finishCategoryRows($sides['receipt']),
+            'payments' => $this->finishCategoryRows($sides['payment']),
+            'totals' => $totals,
+            'cash' => $this->cashPosition($charityId, $dateTo, $totals['closing']['total']),
+        ];
+
+        return $report + $this->legacyTotals($totals);
+    }
+
+    /**
+     * Detailed Receipts and Payments: as receiptsAndPayments() with operational categories
+     */
+    public function detailedReceiptsAndPayments(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        $positions = $this->fundPositions($charityId, $dateFrom, $dateTo);
+        $fundTypes = $this->fundTypesUsed($positions);
+        $fundTypeOf = array_map(fn($p) => $p['fund']['fund_type'], $positions);
+
+        $sides = ['receipt' => [], 'payment' => []];
+        foreach ($this->categoryFundTotals($charityId, $dateFrom, $dateTo) as $row) {
             $rcId = $row['reporting_category_id'];
             $ocId = $row['operational_category_id'];
-            $isReceipt = ($row['category_type'] === 'receipt');
-            $target = $isReceipt ? 'receipts' : 'payments';
-            $amount = (float) $row['total'];
-            $fundType = $row['fund_type'] ?? 'unrestricted';
+            $type = $fundTypeOf[$row['fund_id']] ?? 'unrestricted';
+            $side = &$sides[$row['side']];
 
-            // Get reference to correct array
-            $categories = &${$target};
-
-            // Initialize reporting category if needed
-            if (!isset($categories[$rcId])) {
-                $categories[$rcId] = [
-                    'id' => $rcId,
-                    'name' => $row['reporting_category_name'],
-                    'display_order' => $row['rc_display_order'],
-                    'unrestricted' => 0.0,
-                    'restricted' => 0.0,
-                    'total' => 0.0,
-                    'operational' => [],
-                ];
-            }
-
-            // Initialize operational category if needed
-            if (!isset($categories[$rcId]['operational'][$ocId])) {
-                $categories[$rcId]['operational'][$ocId] = [
-                    'id' => $ocId,
-                    'name' => $row['operational_category_name'],
-                    'display_order' => $row['oc_display_order'],
-                    'unrestricted' => 0.0,
-                    'restricted' => 0.0,
-                    'total' => 0.0,
-                ];
-            }
-
-            // Add amounts
-            if ($fundType === 'restricted') {
-                $categories[$rcId]['operational'][$ocId]['restricted'] += $amount;
-                $categories[$rcId]['restricted'] += $amount;
-                if ($isReceipt) {
-                    $totalReceiptsRestricted += $amount;
-                } else {
-                    $totalPaymentsRestricted += $amount;
-                }
-            } else {
-                $categories[$rcId]['operational'][$ocId]['unrestricted'] += $amount;
-                $categories[$rcId]['unrestricted'] += $amount;
-                if ($isReceipt) {
-                    $totalReceiptsUnrestricted += $amount;
-                } else {
-                    $totalPaymentsUnrestricted += $amount;
-                }
-            }
-            $categories[$rcId]['operational'][$ocId]['total'] += $amount;
-            $categories[$rcId]['total'] += $amount;
-        }
-
-        // Convert operational arrays to indexed arrays and filter empty categories
-        $processCategories = function($categories) {
-            $result = [];
-            foreach ($categories as $cat) {
-                // Convert operational to indexed array sorted by display_order
-                $ops = array_values($cat['operational']);
-                usort($ops, fn($a, $b) => $a['display_order'] <=> $b['display_order']);
-                // Filter out operational categories with no transactions
-                $ops = array_filter($ops, fn($op) => $op['total'] > 0);
-                $cat['operational'] = array_values($ops);
-                
-                // Only include reporting category if it has transactions
-                if ($cat['total'] > 0) {
-                    $result[] = $cat;
-                }
-            }
-            // Sort by display_order
-            usort($result, fn($a, $b) => $a['display_order'] <=> $b['display_order']);
-            return $result;
-        };
-
-        return [
-            'period_start' => $dateFrom,
-            'period_end' => $dateTo,
-            'receipts' => $processCategories($receipts),
-            'payments' => $processCategories($payments),
-            'total_receipts_unrestricted' => $totalReceiptsUnrestricted,
-            'total_receipts_restricted' => $totalReceiptsRestricted,
-            'total_receipts' => $totalReceiptsUnrestricted + $totalReceiptsRestricted,
-            'total_payments_unrestricted' => $totalPaymentsUnrestricted,
-            'total_payments_restricted' => $totalPaymentsRestricted,
-            'total_payments' => $totalPaymentsUnrestricted + $totalPaymentsRestricted,
-        ];
-    }
-
-    /**
-     * Generate report data for a single fund
-     */
-    private function generateFundReport(
-        int $charityId,
-        array $fund,
-        array $reportingCategories,
-        string $dateFrom,
-        string $dateTo
-    ): array {
-        // Calculate opening balance (balance before period start)
-        $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
-        $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments']
-                   + $priorBalance['transfers_in'] - $priorBalance['transfers_out'];
-
-        // Get transfers for this fund during the period
-        $periodTransfers = $this->db->queryOne(
-            "SELECT
-                COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
-                COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
-             FROM transaction_fund_entries tfe
-             JOIN transactions t ON t.id = tfe.transaction_id
-             WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.transaction_type = 'transfer'
-                   AND t.is_deleted = FALSE
-                   AND t.transaction_date >= ? AND t.transaction_date <= ?",
-            [$charityId, $fund['id'], $dateFrom, $dateTo]
-        );
-        $transfersIn = (float) ($periodTransfers['transfers_in'] ?? 0);
-        $transfersOut = (float) ($periodTransfers['transfers_out'] ?? 0);
-
-        // Get category totals for the period using entries tables
-        // This properly handles split transactions by summing amounts from entries
-        $categoryTotals = $this->db->query(
-            "SELECT rc.id as category_id, rc.name, rc.category_type,
-                    COALESCE(SUM(
-                        CASE WHEN tfe.fund_id = ? THEN
-                            -- Pro-rate category amount based on fund allocation
-                            ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
-                                (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
-                                0
-                            ))
-                        ELSE 0 END
-                    ), 0) as total
-             FROM reporting_categories rc
-             LEFT JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-             LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
-             LEFT JOIN transactions t ON t.id = tce.transaction_id
-                 AND t.charity_id = ?
-                 AND t.is_deleted = FALSE
-                 AND t.transaction_date >= ?
-                 AND t.transaction_date <= ?
-             LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
-             WHERE rc.charity_id = ? AND rc.is_active = TRUE
-             GROUP BY rc.id, rc.name, rc.category_type
-             ORDER BY rc.category_type, rc.display_order",
-            [$fund['id'], $charityId, $dateFrom, $dateTo, $charityId]
-        );
-
-        $receipts = [];
-        $payments = [];
-        $receiptsTotal = 0;
-        $paymentsTotal = 0;
-
-        foreach ($categoryTotals as $row) {
-            $data = [
-                'name' => $row['name'],
-                'amount' => (float) $row['total'],
+            $side[$rcId] ??= [
+                'id' => $rcId,
+                'name' => $row['reporting_category_name'],
+                'display_order' => $row['rc_display_order'],
+                'amounts' => array_fill_keys($fundTypes, 0),
+                'total' => 0,
+                'operational' => [],
+            ];
+            $side[$rcId]['operational'][$ocId] ??= [
+                'id' => $ocId,
+                'name' => $row['operational_category_name'],
+                'display_order' => $row['oc_display_order'],
+                'amounts' => array_fill_keys($fundTypes, 0),
+                'total' => 0,
             ];
 
-            if ($row['category_type'] === 'receipt') {
-                $receipts[$row['category_id']] = $data;
-                $receiptsTotal += $data['amount'];
-            } else {
-                $payments[$row['category_id']] = $data;
-                $paymentsTotal += $data['amount'];
-            }
+            $side[$rcId]['amounts'][$type] += $row['pence'];
+            $side[$rcId]['total'] += $row['pence'];
+            $side[$rcId]['operational'][$ocId]['amounts'][$type] += $row['pence'];
+            $side[$rcId]['operational'][$ocId]['total'] += $row['pence'];
+            unset($side);
         }
 
-        $closing = $opening + $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut;
+        $totals = $this->balanceTotalsByType($positions, $fundTypes);
 
-        return [
-            'fund_id' => $fund['id'],
-            'fund_name' => $fund['name'],
-            'fund_type' => $fund['fund_type'],
-            'opening' => $opening,
-            'receipts' => $receipts,
-            'receipts_total' => $receiptsTotal,
-            'payments' => $payments,
-            'payments_total' => $paymentsTotal,
-            'transfers_in' => $transfersIn,
-            'transfers_out' => $transfersOut,
-            'net_movement' => $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut,
-            'closing' => $closing,
+        $report = [
+            'period_start' => $dateFrom,
+            'period_end' => $dateTo,
+            'fund_types' => $fundTypes,
+            'fund_type_labels' => FundService::FUND_TYPE_LABELS,
+            'receipts' => $this->finishCategoryRows($sides['receipt']),
+            'payments' => $this->finishCategoryRows($sides['payment']),
+            'totals' => $totals,
+            'cash' => $this->cashPosition($charityId, $dateTo, $totals['closing']['total']),
         ];
+
+        return $report + $this->legacyTotals($totals);
     }
 
     /**
-     * Calculate balance as of a date using fund entries table
-     * Only sums transactions from opening_balance_date onwards to avoid double-counting
+     * Sort category rows by display order, convert pence to pounds and drop empty rows
      */
-    private function calculateBalanceAsOf(
-        int $charityId,
-        int $fundId,
-        string $date,
-        bool $before = false,
-        ?array $fund = null
-    ): array {
-        $operator = $before ? '<' : '<=';
+    private function finishCategoryRows(array $rows): array
+    {
+        $finish = function (array $row): array {
+            $row['amounts'] = array_map(fn($p) => $p / 100, $row['amounts']);
+            $row['total'] = $row['total'] / 100;
+            // Backwards-compatible keys
+            $row['unrestricted'] = $row['amounts']['unrestricted'] ?? 0.0;
+            $row['restricted'] = $row['amounts']['restricted'] ?? 0.0;
+            $row['endowment'] = $row['amounts']['endowment'] ?? 0.0;
+            return $row;
+        };
 
-        // Get fund to check opening_balance_date (if not already provided)
-        if ($fund === null) {
-            $fund = $this->fundService->get($fundId, $charityId);
+        $result = [];
+        foreach ($rows as $row) {
+            if ($row['total'] === 0) {
+                continue;
+            }
+            if (isset($row['operational'])) {
+                $ops = array_values(array_filter($row['operational'], fn($op) => $op['total'] !== 0));
+                usort($ops, fn($a, $b) => [$a['display_order'], $a['name']] <=> [$b['display_order'], $b['name']]);
+                $row['operational'] = array_map($finish, $ops);
+            }
+            $result[] = $finish($row);
         }
 
-        $dateConditions = ["t.transaction_date $operator ?"];
-        $params = [$charityId, $fundId, $date];
+        usort($result, fn($a, $b) => [$a['display_order'], $a['name']] <=> [$b['display_order'], $b['name']]);
 
-        // Only apply opening_balance_date filter if there's actually an opening balance
-        // (opening balance already includes transactions up to that date)
-        if ($fund && !empty($fund['opening_balance_date']) && (float)($fund['opening_balance'] ?? 0) != 0) {
-            $dateConditions[] = 't.transaction_date > ?';
-            $params[] = $fund['opening_balance_date'];
+        return $result;
+    }
+
+    /**
+     * Flat total keys kept for templates/callers written before fund-type columns
+     */
+    private function legacyTotals(array $totals): array
+    {
+        $legacy = [];
+        foreach (['receipts', 'payments'] as $key) {
+            foreach (FundService::FUND_TYPES as $type) {
+                $legacy["total_{$key}_{$type}"] = $totals[$key][$type] ?? 0.0;
+            }
+            $legacy["total_{$key}"] = $totals[$key]['total'];
         }
 
-        $dateCondition = implode(' AND ', $dateConditions);
-
-        // Use transaction_fund_entries to properly handle split transactions
-        // Track receipts, payments, and transfers separately
-        $result = $this->db->queryOne(
-            "SELECT
-                COALESCE(SUM(CASE WHEN t.transaction_type = 'receipt' THEN ABS(tfe.amount) ELSE 0 END), 0) as receipts,
-                COALESCE(SUM(CASE WHEN t.transaction_type = 'payment' THEN ABS(tfe.amount) ELSE 0 END), 0) as payments,
-                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
-                COALESCE(SUM(CASE WHEN t.transaction_type = 'transfer' AND tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
-             FROM transaction_fund_entries tfe
-             JOIN transactions t ON t.id = tfe.transaction_id
-             WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.is_deleted = FALSE
-             AND ($dateCondition)",
-            $params
-        );
-
-        return [
-            'receipts' => (float) ($result['receipts'] ?? 0),
-            'payments' => (float) ($result['payments'] ?? 0),
-            'transfers_in' => (float) ($result['transfers_in'] ?? 0),
-            'transfers_out' => (float) ($result['transfers_out'] ?? 0),
-        ];
+        return $legacy;
     }
 
     /**
      * Generate Fund Summary report
      *
-     * When dateFrom is provided, shows period-specific activity (comparable to R&P reports).
-     * When dateFrom is null, shows cumulative balance from opening balance date.
-     *
-     * @param int $charityId The charity ID
-     * @param string|null $asOfDate End date (defaults to today)
-     * @param string|null $dateFrom Start date for period-specific report
+     * When dateFrom is provided, opening is the balance at the close of the previous day and
+     * the activity covers dateFrom..asOfDate. Otherwise opening is each fund's opening balance
+     * and the activity is everything up to asOfDate. Either way balance is the closing balance.
      */
     public function fundSummary(int $charityId, ?string $asOfDate = null, ?string $dateFrom = null): array
     {
         $funds = $this->fundService->getAllBalances($charityId, $asOfDate, $dateFrom);
-        
-        $totals = [
-            'unrestricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
-            'restricted' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
-            'total' => ['opening' => 0, 'receipts' => 0, 'payments' => 0, 'transfers_in' => 0, 'transfers_out' => 0, 'balance' => 0],
-        ];
+
+        $keys = ['opening', 'receipts', 'payments', 'transfers_in', 'transfers_out', 'balance'];
+        $totals = ['total' => array_fill_keys($keys, 0)];
+        foreach (FundService::FUND_TYPES as $type) {
+            $totals[$type] = array_fill_keys($keys, 0);
+        }
 
         foreach ($funds as $fund) {
             $type = $fund['fund_type'];
-            $totals[$type]['opening'] += $fund['opening'] ?? 0;
-            $totals[$type]['receipts'] += $fund['receipts'] ?? 0;
-            $totals[$type]['payments'] += $fund['payments'] ?? 0;
-            $totals[$type]['transfers_in'] += $fund['transfers_in'] ?? 0;
-            $totals[$type]['transfers_out'] += $fund['transfers_out'] ?? 0;
-            $totals[$type]['balance'] += $fund['balance'] ?? 0;
+            foreach ($keys as $key) {
+                $pence = Money::toPence($fund[$key] ?? 0);
+                $totals[$type][$key] += $pence;
+                $totals['total'][$key] += $pence;
+            }
+        }
 
-            $totals['total']['opening'] += $fund['opening'] ?? 0;
-            $totals['total']['receipts'] += $fund['receipts'] ?? 0;
-            $totals['total']['payments'] += $fund['payments'] ?? 0;
-            $totals['total']['transfers_in'] += $fund['transfers_in'] ?? 0;
-            $totals['total']['transfers_out'] += $fund['transfers_out'] ?? 0;
-            $totals['total']['balance'] += $fund['balance'] ?? 0;
+        foreach ($totals as $type => $values) {
+            $totals[$type] = array_map(fn($p) => $p / 100, $values);
         }
 
         return [
@@ -464,436 +415,210 @@ class ReportService
     }
 
     /**
-     * Generate fund-by-fund R&P breakdown (for OSCR accounts)
-     * Shows each fund as a separate column with category breakdowns
+     * Fund-by-fund R&P breakdown (for OSCR accounts): one column per fund
      */
-    public function fundByFundBreakdown(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo
-    ): array {
-        $funds = $this->fundService->getAll($charityId);
-        $reportingCategories = $this->categoryService->getReportingCategories($charityId);
+    public function fundByFundBreakdown(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        return $this->fundByFund($charityId, $dateFrom, $dateTo, false);
+    }
 
-        // Initialize category data
-        $receiptCategories = [];
-        $paymentCategories = [];
-        foreach ($reportingCategories as $cat) {
-            $entry = [
-                'id' => $cat['id'],
-                'name' => $cat['name'],
-                'funds' => [],
-                'total' => 0.0,
+    /**
+     * Fund-by-fund breakdown with operational categories as rows
+     */
+    public function fundByFundOperationalBreakdown(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        return $this->fundByFund($charityId, $dateFrom, $dateTo, true);
+    }
+
+    private function fundByFund(int $charityId, string $dateFrom, string $dateTo, bool $operational): array
+    {
+        $positions = $this->fundPositions($charityId, $dateFrom, $dateTo);
+        $funds = array_map(fn($p) => $p['fund'], array_values($positions));
+        $fundIds = array_keys($positions);
+
+        $categories = ['receipt' => [], 'payment' => []];
+        foreach ($this->categoryFundTotals($charityId, $dateFrom, $dateTo) as $row) {
+            $key = $operational ? $row['operational_category_id'] : $row['reporting_category_id'];
+            $side = &$categories[$row['side']];
+
+            $side[$key] ??= [
+                'id' => $key,
+                'name' => $operational ? $row['operational_category_name'] : $row['reporting_category_name'],
+                'reporting_category_name' => $row['reporting_category_name'],
+                'sort' => $operational
+                    ? [$row['rc_display_order'], $row['reporting_category_name'], $row['oc_display_order'], $row['operational_category_name']]
+                    : [$row['rc_display_order'], $row['reporting_category_name']],
+                'funds' => array_fill_keys($fundIds, 0),
+                'total' => 0,
             ];
-            // Initialize each fund column
-            foreach ($funds as $fund) {
-                $entry['funds'][$fund['id']] = 0.0;
-            }
-            if ($cat['category_type'] === 'receipt') {
-                $receiptCategories[$cat['id']] = $entry;
-            } else {
-                $paymentCategories[$cat['id']] = $entry;
-            }
+            $side[$key]['funds'][$row['fund_id']] = ($side[$key]['funds'][$row['fund_id']] ?? 0) + $row['pence'];
+            $side[$key]['total'] += $row['pence'];
+            unset($side);
         }
 
-        // Initialize fund totals
+        $finish = function (array $rows): array {
+            $rows = array_values(array_filter($rows, fn($r) => $r['total'] !== 0));
+            usort($rows, fn($a, $b) => $a['sort'] <=> $b['sort']);
+            return array_map(function ($r) {
+                unset($r['sort']);
+                $r['funds'] = array_map(fn($p) => $p / 100, $r['funds']);
+                $r['total'] = $r['total'] / 100;
+                return $r;
+            }, $rows);
+        };
+
         $fundTotals = [];
-        foreach ($funds as $fund) {
-            $fundTotals[$fund['id']] = [
-                'fund' => $fund,
-                'opening' => 0.0,
-                'receipts' => 0.0,
-                'payments' => 0.0,
-                'transfers_in' => 0.0,
-                'transfers_out' => 0.0,
-                'closing' => 0.0,
-            ];
-        }
-
-        // Generate each fund report and populate category data
-        foreach ($funds as $fund) {
-            $fundReport = $this->generateFundReport(
-                $charityId,
-                $fund,
-                $reportingCategories,
-                $dateFrom,
-                $dateTo
-            );
-
-            $fundTotals[$fund['id']]['opening'] = $fundReport['opening'];
-            $fundTotals[$fund['id']]['receipts'] = $fundReport['receipts_total'];
-            $fundTotals[$fund['id']]['payments'] = $fundReport['payments_total'];
-            $fundTotals[$fund['id']]['transfers_in'] = $fundReport['transfers_in'];
-            $fundTotals[$fund['id']]['transfers_out'] = $fundReport['transfers_out'];
-            $fundTotals[$fund['id']]['closing'] = $fundReport['closing'];
-
-            // Populate receipt categories
-            foreach ($fundReport['receipts'] as $catId => $data) {
-                if (isset($receiptCategories[$catId])) {
-                    $receiptCategories[$catId]['funds'][$fund['id']] = $data['amount'];
-                    $receiptCategories[$catId]['total'] += $data['amount'];
-                }
-            }
-
-            // Populate payment categories
-            foreach ($fundReport['payments'] as $catId => $data) {
-                if (isset($paymentCategories[$catId])) {
-                    $paymentCategories[$catId]['funds'][$fund['id']] = $data['amount'];
-                    $paymentCategories[$catId]['total'] += $data['amount'];
-                }
+        $grand = array_fill_keys(['opening', 'receipts', 'payments', 'transfers_in', 'transfers_out', 'closing'], 0);
+        foreach ($positions as $fundId => $position) {
+            $fundTotals[$fundId] = ['fund' => $position['fund']];
+            foreach (array_keys($grand) as $key) {
+                $fundTotals[$fundId][$key] = $position[$key] / 100;
+                $grand[$key] += $position[$key];
             }
         }
-
-        // Calculate grand totals
-        $grandTotals = [
-            'opening' => 0.0,
-            'receipts' => 0.0,
-            'payments' => 0.0,
-            'transfers_in' => 0.0,
-            'transfers_out' => 0.0,
-            'closing' => 0.0,
-        ];
-        foreach ($fundTotals as $ft) {
-            $grandTotals['opening'] += $ft['opening'];
-            $grandTotals['receipts'] += $ft['receipts'];
-            $grandTotals['payments'] += $ft['payments'];
-            $grandTotals['transfers_in'] += $ft['transfers_in'];
-            $grandTotals['transfers_out'] += $ft['transfers_out'];
-            $grandTotals['closing'] += $ft['closing'];
-        }
-
-        // Filter out empty categories
-        $receiptCategories = array_values(array_filter($receiptCategories, fn($c) => $c['total'] > 0));
-        $paymentCategories = array_values(array_filter($paymentCategories, fn($c) => $c['total'] > 0));
 
         return [
             'period_start' => $dateFrom,
             'period_end' => $dateTo,
             'funds' => $funds,
             'fund_totals' => $fundTotals,
-            'receipt_categories' => $receiptCategories,
-            'payment_categories' => $paymentCategories,
-            'grand_totals' => $grandTotals,
+            'receipt_categories' => $finish($categories['receipt']),
+            'payment_categories' => $finish($categories['payment']),
+            'grand_totals' => array_map(fn($p) => $p / 100, $grand),
         ];
     }
 
     /**
-     * Generate fund-by-fund breakdown with operational category detail
-     * Shows each fund as a column with operational categories listed
+     * Category Analysis: totals and transaction counts per category for a period
      */
-    public function fundByFundOperationalBreakdown(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo
-    ): array {
-        $funds = $this->fundService->getAll($charityId);
-        $operationalCategories = $this->categoryService->getOperationalCategories($charityId);
+    public function categoryAnalysis(int $charityId, string $dateFrom, string $dateTo, ?string $type = null): array
+    {
+        $categories = [];
+        $counts = $this->transactionCountsByCategory($charityId, $dateFrom, $dateTo);
 
-        // Group operational categories by type
-        $receiptCategories = [];
-        $paymentCategories = [];
-        foreach ($operationalCategories as $cat) {
-            $entry = [
-                'id' => $cat['id'],
-                'name' => $cat['name'],
-                'reporting_category_name' => $cat['reporting_category_name'] ?? '',
-                'funds' => [],
-                'total' => 0.0,
-            ];
-            foreach ($funds as $fund) {
-                $entry['funds'][$fund['id']] = 0.0;
-            }
-            if ($cat['category_type'] === 'receipt') {
-                $receiptCategories[$cat['id']] = $entry;
-            } else {
-                $paymentCategories[$cat['id']] = $entry;
-            }
-        }
-
-        // Query all amounts by operational category and fund
-        // Pro-rates when a transaction is split across multiple funds
-        $sql = "SELECT
-                    oc.id as category_id,
-                    rc.category_type,
-                    tfe.fund_id,
-                    COALESCE(SUM(
-                        ABS(tce.amount) * (ABS(tfe.amount) / NULLIF(
-                            (SELECT SUM(ABS(tfe2.amount)) FROM transaction_fund_entries tfe2 WHERE tfe2.transaction_id = t.id),
-                            0
-                        ))
-                    ), 0) as total
-                FROM operational_categories oc
-                JOIN reporting_categories rc ON rc.id = oc.reporting_category_id
-                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
-                LEFT JOIN transactions t ON t.id = tce.transaction_id
-                    AND t.charity_id = ?
-                    AND t.is_deleted = FALSE
-                    AND t.transaction_date >= ?
-                    AND t.transaction_date <= ?
-                LEFT JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
-                WHERE oc.charity_id = ? AND oc.is_active = TRUE
-                GROUP BY oc.id, rc.category_type, tfe.fund_id";
-
-        $rows = $this->db->query($sql, [$charityId, $dateFrom, $dateTo, $charityId]);
-
-        // Populate category amounts
-        foreach ($rows as $row) {
-            $catId = $row['category_id'];
-            $fundId = $row['fund_id'];
-            $amount = (float) $row['total'];
-
-            if ($fundId === null) {
+        foreach ($this->categoryFundTotals($charityId, $dateFrom, $dateTo) as $row) {
+            if ($type && $row['side'] !== $type) {
                 continue;
             }
-
-            if ($row['category_type'] === 'receipt' && isset($receiptCategories[$catId])) {
-                $receiptCategories[$catId]['funds'][$fundId] = $amount;
-                $receiptCategories[$catId]['total'] += $amount;
-            } elseif ($row['category_type'] === 'payment' && isset($paymentCategories[$catId])) {
-                $paymentCategories[$catId]['funds'][$fundId] = $amount;
-                $paymentCategories[$catId]['total'] += $amount;
-            }
-        }
-
-        // Calculate fund totals
-        $fundTotals = [];
-        foreach ($funds as $fund) {
-            $receiptsTotal = 0.0;
-            $paymentsTotal = 0.0;
-            foreach ($receiptCategories as $cat) {
-                $receiptsTotal += $cat['funds'][$fund['id']];
-            }
-            foreach ($paymentCategories as $cat) {
-                $paymentsTotal += $cat['funds'][$fund['id']];
-            }
-
-            // Get opening balance
-            $priorBalance = $this->calculateBalanceAsOf($charityId, $fund['id'], $dateFrom, true, $fund);
-            $opening = (float) $fund['opening_balance'] + $priorBalance['receipts'] - $priorBalance['payments']
-                       + $priorBalance['transfers_in'] - $priorBalance['transfers_out'];
-
-            // Get transfers for this fund during the period
-            $periodTransfers = $this->db->queryOne(
-                "SELECT
-                    COALESCE(SUM(CASE WHEN tfe.amount > 0 THEN tfe.amount ELSE 0 END), 0) as transfers_in,
-                    COALESCE(SUM(CASE WHEN tfe.amount < 0 THEN ABS(tfe.amount) ELSE 0 END), 0) as transfers_out
-                 FROM transaction_fund_entries tfe
-                 JOIN transactions t ON t.id = tfe.transaction_id
-                 WHERE t.charity_id = ? AND tfe.fund_id = ? AND t.transaction_type = 'transfer'
-                       AND t.is_deleted = FALSE
-                       AND t.transaction_date >= ? AND t.transaction_date <= ?",
-                [$charityId, $fund['id'], $dateFrom, $dateTo]
-            );
-            $transfersIn = (float) $periodTransfers['transfers_in'];
-            $transfersOut = (float) $periodTransfers['transfers_out'];
-
-            $fundTotals[$fund['id']] = [
-                'fund' => $fund,
-                'opening' => $opening,
-                'receipts' => $receiptsTotal,
-                'payments' => $paymentsTotal,
-                'transfers_in' => $transfersIn,
-                'transfers_out' => $transfersOut,
-                'closing' => $opening + $receiptsTotal - $paymentsTotal + $transfersIn - $transfersOut,
-            ];
-        }
-
-        // Calculate grand totals
-        $grandTotals = [
-            'opening' => 0.0,
-            'receipts' => 0.0,
-            'payments' => 0.0,
-            'transfers_in' => 0.0,
-            'transfers_out' => 0.0,
-            'closing' => 0.0,
-        ];
-        foreach ($fundTotals as $ft) {
-            $grandTotals['opening'] += $ft['opening'];
-            $grandTotals['receipts'] += $ft['receipts'];
-            $grandTotals['payments'] += $ft['payments'];
-            $grandTotals['transfers_in'] += $ft['transfers_in'];
-            $grandTotals['transfers_out'] += $ft['transfers_out'];
-            $grandTotals['closing'] += $ft['closing'];
-        }
-
-        // Filter out empty categories and convert to indexed arrays
-        $receiptCategories = array_values(array_filter($receiptCategories, fn($c) => $c['total'] > 0));
-        $paymentCategories = array_values(array_filter($paymentCategories, fn($c) => $c['total'] > 0));
-
-        return [
-            'period_start' => $dateFrom,
-            'period_end' => $dateTo,
-            'funds' => $funds,
-            'fund_totals' => $fundTotals,
-            'receipt_categories' => $receiptCategories,
-            'payment_categories' => $paymentCategories,
-            'grand_totals' => $grandTotals,
-        ];
-    }
-
-    /**
-     * Generate Category Analysis report
-     * Uses category entries table to properly handle split transactions
-     */
-    public function categoryAnalysis(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo,
-        ?string $type = null
-    ): array {
-        $sql = "SELECT
-                    rc.id as reporting_category_id,
-                    rc.name as reporting_category_name,
-                    rc.category_type,
-                    oc.id as operational_category_id,
-                    oc.name as operational_category_name,
-                    COALESCE(SUM(ABS(tce.amount)), 0) as total,
-                    COUNT(DISTINCT t.id) as transaction_count
-                FROM reporting_categories rc
-                JOIN operational_categories oc ON oc.reporting_category_id = rc.id
-                LEFT JOIN transaction_category_entries tce ON tce.operational_category_id = oc.id
-                LEFT JOIN transactions t ON t.id = tce.transaction_id
-                    AND t.charity_id = ?
-                    AND t.is_deleted = FALSE
-                    AND t.transaction_date >= ?
-                    AND t.transaction_date <= ?
-                WHERE rc.charity_id = ? AND rc.is_active = TRUE AND oc.is_active = TRUE";
-
-        $params = [$charityId, $dateFrom, $dateTo, $charityId];
-
-        if ($type) {
-            $sql .= " AND rc.category_type = ?";
-            $params[] = $type;
-        }
-
-        $sql .= " GROUP BY rc.id, rc.name, rc.category_type, oc.id, oc.name
-                  ORDER BY rc.category_type, rc.display_order, oc.display_order";
-
-        $rows = $this->db->query($sql, $params);
-
-        // Group by reporting category
-        $categories = [];
-        foreach ($rows as $row) {
             $rcId = $row['reporting_category_id'];
-            
-            if (!isset($categories[$rcId])) {
-                $categories[$rcId] = [
-                    'id' => $rcId,
-                    'name' => $row['reporting_category_name'],
-                    'type' => $row['category_type'],
-                    'total' => 0,
-                    'count' => 0,
-                    'operational' => [],
-                ];
-            }
+            $ocId = $row['operational_category_id'];
 
-            $categories[$rcId]['total'] += (float) $row['total'];
-            $categories[$rcId]['count'] += (int) $row['transaction_count'];
-            $categories[$rcId]['operational'][] = [
-                'id' => $row['operational_category_id'],
-                'name' => $row['operational_category_name'],
-                'total' => (float) $row['total'],
-                'transaction_count' => (int) $row['transaction_count'],
+            $categories[$rcId] ??= [
+                'id' => $rcId,
+                'name' => $row['reporting_category_name'],
+                'type' => $row['side'],
+                'display_order' => $row['rc_display_order'],
+                'total' => 0,
+                'count' => $counts['reporting'][$rcId] ?? 0,
+                'operational' => [],
             ];
+            $categories[$rcId]['operational'][$ocId] ??= [
+                'id' => $ocId,
+                'name' => $row['operational_category_name'],
+                'display_order' => $row['oc_display_order'],
+                'total' => 0,
+                'transaction_count' => $counts['operational'][$ocId] ?? 0,
+            ];
+            $categories[$rcId]['total'] += $row['pence'];
+            $categories[$rcId]['operational'][$ocId]['total'] += $row['pence'];
         }
 
-        // Calculate percentages
         foreach ($categories as &$cat) {
-            if ($cat['total'] > 0) {
-                foreach ($cat['operational'] as &$op) {
-                    $op['percentage'] = round(($op['total'] / $cat['total']) * 100, 1);
-                }
+            $ops = array_values($cat['operational']);
+            usort($ops, fn($a, $b) => [$a['display_order'], $a['name']] <=> [$b['display_order'], $b['name']]);
+            foreach ($ops as &$op) {
+                $op['percentage'] = $cat['total'] > 0 ? round($op['total'] / $cat['total'] * 100, 1) : 0.0;
+                $op['total'] = $op['total'] / 100;
             }
+            unset($op);
+            $cat['operational'] = $ops;
+            $cat['total'] = $cat['total'] / 100;
         }
+        unset($cat);
+
+        $categories = array_values($categories);
+        usort($categories, fn($a, $b) => [$a['type'], $a['display_order'], $a['name']] <=> [$b['type'], $b['display_order'], $b['name']]);
 
         return [
             'period_start' => $dateFrom,
             'period_end' => $dateTo,
-            'categories' => array_values($categories),
+            'categories' => $categories,
         ];
     }
 
     /**
-     * Generate Gift Aid report
+     * Distinct transaction counts per category (a split transaction counts once per category)
      */
-    public function giftAidReport(
-        int $charityId,
-        string $dateFrom,
-        string $dateTo,
-        ?string $status = null
-    ): array {
-        $sql = "SELECT t.*, d.name as donor_name, d.address_line1, d.address_postcode,
-                       gc.id as claim_id, gc.status as claim_status, gc.submitted_at
-                FROM transactions t
-                LEFT JOIN donors d ON d.id = t.donor_id
-                LEFT JOIN giftaid_claims gc ON gc.id = t.giftaid_claim_id
-                WHERE t.charity_id = ?
-                AND t.is_deleted = FALSE
-                AND t.transaction_type = 'receipt'
-                AND t.giftaid_status != 'not_applicable'
-                AND t.transaction_date >= ?
-                AND t.transaction_date <= ?";
+    private function transactionCountsByCategory(int $charityId, string $dateFrom, string $dateTo): array
+    {
+        $rows = $this->db->query(
+            "SELECT tce.operational_category_id, oc.reporting_category_id, t.id as transaction_id
+             FROM transaction_category_entries tce
+             JOIN transactions t ON t.id = tce.transaction_id
+             JOIN funds f ON f.id = tce.fund_id
+             JOIN operational_categories oc ON oc.id = tce.operational_category_id
+             WHERE t.charity_id = ? AND t.is_deleted = FALSE
+               AND t.transaction_type IN ('receipt', 'payment')
+               AND t.transaction_date >= ? AND t.transaction_date <= ?
+               AND (f.opening_balance_date IS NULL OR t.transaction_date > f.opening_balance_date)
+             GROUP BY tce.operational_category_id, oc.reporting_category_id, t.id",
+            [$charityId, $dateFrom, $dateTo]
+        );
 
-        $params = [$charityId, $dateFrom, $dateTo];
-
-        if ($status) {
-            $sql .= " AND t.giftaid_status = ?";
-            $params[] = $status;
-        }
-
-        $sql .= " ORDER BY t.giftaid_status, t.transaction_date";
-
-        $transactions = $this->db->query($sql, $params);
-
-        // Calculate totals by status
-        $totals = [
-            'eligible' => ['count' => 0, 'amount' => 0, 'giftaid' => 0],
-            'gasds' => ['count' => 0, 'amount' => 0, 'giftaid' => 0],
-            'claimed' => ['count' => 0, 'amount' => 0, 'giftaid' => 0],
-            'not_eligible' => ['count' => 0, 'amount' => 0],
-        ];
-
-        foreach ($transactions as $t) {
-            $status = $t['giftaid_status'];
-            if (isset($totals[$status])) {
-                $totals[$status]['count']++;
-                $totals[$status]['amount'] += (float) $t['amount'];
-                if (isset($totals[$status]['giftaid'])) {
-                    $totals[$status]['giftaid'] += (float) $t['amount'] * 0.25;
-                }
-            }
+        $operational = [];
+        $reporting = [];
+        foreach ($rows as $row) {
+            $operational[(int) $row['operational_category_id']][(int) $row['transaction_id']] = true;
+            $reporting[(int) $row['reporting_category_id']][(int) $row['transaction_id']] = true;
         }
 
         return [
-            'period_start' => $dateFrom,
-            'period_end' => $dateTo,
-            'transactions' => $transactions,
-            'totals' => $totals,
+            'operational' => array_map('count', $operational),
+            'reporting' => array_map('count', $reporting),
         ];
     }
 
     /**
      * Export transactions to CSV format
+     *
+     * Text cells that a spreadsheet would treat as a formula are prefixed with an apostrophe.
      */
     public function exportTransactionsCsv(array $transactions): string
     {
-        $csv = "Date,Type,Description,Amount,Fund,Category,Donor,Reference,Gift Aid\n";
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, ['Date', 'Type', 'Description', 'Amount', 'Fund', 'Category', 'Donor', 'Reference', 'Gift Aid'], ',', '"', '');
 
         foreach ($transactions as $t) {
-            $csv .= sprintf(
-                "%s,%s,\"%s\",%.2f,\"%s\",\"%s\",\"%s\",\"%s\",%s\n",
+            fputcsv($handle, [
                 $t['transaction_date'],
                 $t['transaction_type'],
-                str_replace('"', '""', $t['description']),
-                $t['amount'],
-                str_replace('"', '""', $t['fund_name']),
-                str_replace('"', '""', $t['category_name']),
-                str_replace('"', '""', $t['donor_name'] ?? ''),
-                str_replace('"', '""', $t['reference'] ?? ''),
-                $t['giftaid_status']
-            );
+                self::csvText($t['description'] ?? ''),
+                Money::normalise($t['amount']),
+                self::csvText($t['fund_name'] ?? ''),
+                self::csvText($t['category_name'] ?? ''),
+                self::csvText($t['donor_name'] ?? ''),
+                self::csvText($t['reference'] ?? ''),
+                $t['giftaid_status'] ?? '',
+            ], ',', '"', '');
         }
 
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
         return $csv;
+    }
+
+    /**
+     * Neutralise spreadsheet formula injection in a text cell
+     */
+    private static function csvText(?string $value): string
+    {
+        $value = (string) $value;
+        if ($value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 }

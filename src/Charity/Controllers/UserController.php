@@ -258,8 +258,8 @@ class UserController extends BaseController
             $db = $this->get(Database::class);
             $auditService = $this->get(AuditService::class);
             
-            // Can't demote yourself
-            if ($targetUserId === $userId && $data['role'] !== 'admin') {
+            // Nobody can change their own role or permissions
+            if ($targetUserId === (int) $userId) {
                 throw new ValidationException(['You cannot change your own role']);
             }
             
@@ -272,22 +272,38 @@ class UserController extends BaseController
             if (!$existing) {
                 throw new ValidationException(['User not found in this charity']);
             }
+
+            $this->assertCanAssignRole($request, $existing['role'], $role);
+
+            // Demoting an admin must leave at least one active admin
+            if ($existing['role'] === 'admin' && $role !== 'admin') {
+                $this->assertAnotherAdminRemains($db, $charityId, $targetUserId);
+            }
             
             // Build update data
             $updateData = [
-                'role' => $data['role'],
+                'role' => $role,
             ];
             
             // If approving from pending, set approval info
-            if ($existing['role'] === 'pending' && $data['role'] !== 'pending') {
+            if ($existing['role'] === 'pending' && $role !== 'pending') {
                 $updateData['approved_by_user_id'] = $userId;
                 $updateData['approved_at'] = date('Y-m-d H:i:s');
             }
             
             // Handle custom permissions if provided
             if (isset($data['permissions']) && is_array($data['permissions'])) {
+                $membership = $request->getAttribute('membership');
+                $isAdmin = $request->getAttribute('user_role') === 'admin';
                 $customPermissions = [];
                 foreach ($data['permissions'] as $perm => $value) {
+                    if (!array_key_exists($perm, \CharityCashbook\Charity\PermissionService::PERMISSIONS)) {
+                        continue;
+                    }
+                    // Non-admins can only grant permissions they hold themselves
+                    if ((bool) $value && !$isAdmin && !$permissionService->hasPermission($membership, $perm, $charityId)) {
+                        throw new ValidationException(["You cannot grant a permission you do not have ($perm)"]);
+                    }
                     $customPermissions[$perm] = (bool) $value;
                 }
                 $updateData['permissions'] = json_encode($customPermissions);
@@ -313,7 +329,7 @@ class UserController extends BaseController
             
             $auditService->log($charityId, $userId, 'user_role_changed', 'charity_user', $targetUserId, [
                 'old_role' => $existing['role'],
-                'new_role' => $data['role'],
+                'new_role' => $role,
             ]);
             
             $this->flash('success', 'User updated.');
@@ -337,9 +353,12 @@ class UserController extends BaseController
         
         try {
             $role = $data['role'] ?? 'standard';
-            if (!in_array($role, ['admin', 'standard', 'readonly'])) {
+            $permissionService = $this->get(\CharityCashbook\Charity\PermissionService::class);
+            $availableRoles = $permissionService->getAvailableRoles($charityId);
+            if (!isset($availableRoles[$role]) || $role === 'pending') {
                 $role = 'standard';
             }
+            $this->assertCanAssignRole($request, 'pending', $role);
             
             $db = $this->get(Database::class);
             $auditService = $this->get(AuditService::class);
@@ -427,15 +446,18 @@ class UserController extends BaseController
                 throw new ValidationException(['You cannot remove yourself']);
             }
             
-            // Check at least one admin remains
-            $adminCount = $db->queryOne(
-                "SELECT COUNT(*) as count FROM charity_users 
-                 WHERE charity_id = ? AND role = 'admin' AND user_id != ?",
+            $existing = $db->queryOne(
+                "SELECT * FROM charity_users WHERE charity_id = ? AND user_id = ?",
                 [$charityId, $targetUserId]
             );
-            
-            if ((int) $adminCount['count'] === 0) {
-                throw new ValidationException(['Cannot remove the last admin']);
+            if (!$existing) {
+                throw new ValidationException(['User not found in this charity']);
+            }
+
+            // Only admins can remove admins, and at least one active admin must remain
+            if ($existing['role'] === 'admin') {
+                $this->assertCanAssignRole($request, 'admin', 'pending');
+                $this->assertAnotherAdminRemains($db, $charityId, $targetUserId);
             }
             
             $db->execute(
@@ -665,6 +687,36 @@ class UserController extends BaseController
         
         if (!empty($errors)) {
             throw new ValidationException($errors);
+        }
+    }
+
+    /**
+     * Only administrators may grant, change or remove the administrator role
+     */
+    private function assertCanAssignRole($request, string $currentRole, string $newRole): void
+    {
+        if ($request->getAttribute('user_role') === 'admin') {
+            return;
+        }
+
+        if ($currentRole === 'admin' || $newRole === 'admin') {
+            throw new ValidationException(['Only administrators can grant, change or remove the administrator role']);
+        }
+    }
+
+    /**
+     * Throw unless an active admin other than $targetUserId exists
+     */
+    private function assertAnotherAdminRemains(\CharityCashbook\Core\DatabaseInterface $db, int $charityId, int $targetUserId): void
+    {
+        $adminCount = (int) $db->queryValue(
+            "SELECT COUNT(*) FROM charity_users
+             WHERE charity_id = ? AND role = 'admin' AND is_active = TRUE AND user_id != ?",
+            [$charityId, $targetUserId]
+        );
+
+        if ($adminCount === 0) {
+            throw new ValidationException(['Cannot remove the last admin']);
         }
     }
 }

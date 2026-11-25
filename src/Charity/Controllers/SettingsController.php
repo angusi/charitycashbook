@@ -7,6 +7,8 @@ namespace CharityCashbook\Charity\Controllers;
 use CharityCashbook\Core\Controllers\BaseController;
 use CharityCashbook\Charity\CharityRepository;
 use CharityCashbook\Charity\AuditService;
+use CharityCashbook\Charity\FinancialYear;
+use CharityCashbook\Core\DatabaseInterface;
 use CharityCashbook\Core\Exceptions\ValidationException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -19,10 +21,99 @@ class SettingsController extends BaseController
 {
     public function index(Request $request, Response $response): Response
     {
+        $charity = $request->getAttribute('charity');
+        $lockedUntil = $charity['books_locked_until'] ?? null;
+        $closeCandidate = FinancialYear::lastCompletedEnd($charity);
+
         $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/settings/index.html.twig', 
-            $this->getCommonTemplateData($request)
+        return $view->render($response, 'charity/settings/index.html.twig', array_merge(
+            $this->getCommonTemplateData($request),
+            [
+                'books' => [
+                    'locked_until' => $lockedUntil,
+                    'close_candidate' => ($lockedUntil === null || $closeCandidate > $lockedUntil) ? $closeCandidate : null,
+                    'close_candidate_start' => FinancialYear::startFor($charity, $closeCandidate),
+                    'reopen_to' => $lockedUntil ? FinancialYear::previousEnd($charity, $lockedUntil) : null,
+                ],
+            ]
+        ));
+    }
+
+    /**
+     * Close the books for the most recent completed financial year
+     */
+    public function closeYear(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $charity = $request->getAttribute('charity');
+        $userId = $request->getAttribute('user_id');
+        $db = $this->get(DatabaseInterface::class);
+
+        $lockedUntil = $charity['books_locked_until'] ?? null;
+        $closeTo = FinancialYear::lastCompletedEnd($charity);
+
+        if ($lockedUntil !== null && $closeTo <= $lockedUntil) {
+            $this->flash('error', "The books are already closed up to $lockedUntil.");
+            return $this->redirect($response, "/charity/$charityId/settings");
+        }
+
+        // Estimated fund allocations must be confirmed before a year is closed
+        $needsReview = (int) $db->queryValue(
+            "SELECT COUNT(*) FROM transactions
+             WHERE charity_id = ? AND is_deleted = FALSE AND allocation_needs_review = TRUE AND transaction_date <= ?",
+            [$charityId, $closeTo]
         );
+        if ($needsReview > 0) {
+            $this->flash('error', "$needsReview transaction(s) up to $closeTo need their fund allocation reviewed before the year can be closed.");
+            return $this->redirect($response, "/charity/$charityId/transactions?needs_review=1&date_to=$closeTo");
+        }
+
+        $db->execute("UPDATE charities SET books_locked_until = ? WHERE id = ?", [$closeTo, $charityId]);
+
+        $this->get(AuditService::class)->log($charityId, $userId, 'books_closed', 'charity', $charityId, [
+            'locked_until' => $closeTo,
+            'previously_locked_until' => $lockedUntil,
+        ]);
+
+        $this->flash('success', "Books closed up to $closeTo. Transactions on or before that date can no longer be changed.");
+        return $this->redirect($response, "/charity/$charityId/settings");
+    }
+
+    /**
+     * Reopen the most recently closed financial year
+     */
+    public function reopenYear(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $charity = $request->getAttribute('charity');
+        $userId = $request->getAttribute('user_id');
+
+        $lockedUntil = $charity['books_locked_until'] ?? null;
+        if ($lockedUntil === null) {
+            $this->flash('error', 'No financial year is closed.');
+            return $this->redirect($response, "/charity/$charityId/settings");
+        }
+
+        $reopenTo = FinancialYear::previousEnd($charity, $lockedUntil);
+        // Stop locking altogether once there is nothing before the earlier year end
+        $db = $this->get(DatabaseInterface::class);
+        $earliest = $db->queryValue(
+            "SELECT MIN(transaction_date) FROM transactions WHERE charity_id = ? AND is_deleted = FALSE",
+            [$charityId]
+        );
+        $newLock = ($earliest && $earliest <= $reopenTo) ? $reopenTo : null;
+
+        $db->execute("UPDATE charities SET books_locked_until = ? WHERE id = ?", [$newLock, $charityId]);
+
+        $this->get(AuditService::class)->log($charityId, $userId, 'books_reopened', 'charity', $charityId, [
+            'locked_until' => $newLock,
+            'previously_locked_until' => $lockedUntil,
+        ]);
+
+        $this->flash('warning', $newLock
+            ? "Reopened the year ending $lockedUntil. Books are now closed up to $newLock."
+            : "Reopened the year ending $lockedUntil. No years are closed now.");
+        return $this->redirect($response, "/charity/$charityId/settings");
     }
 
     public function updateGeneral(Request $request, Response $response): Response

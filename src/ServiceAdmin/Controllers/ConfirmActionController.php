@@ -6,6 +6,10 @@ namespace CharityCashbook\ServiceAdmin\Controllers;
 
 use CharityCashbook\Core\Controllers\BaseController;
 use CharityCashbook\Core\DatabaseInterface;
+use CharityCashbook\Core\PrivacyService;
+use CharityCashbook\Core\Exceptions\ValidationException;
+use CharityCashbook\Auth\SessionManager;
+use CharityCashbook\ServiceAdmin\UserAdminService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Views\Twig;
@@ -76,6 +80,24 @@ class ConfirmActionController extends BaseController
             'confirm_button' => 'Force Global Re-auth',
             'icon' => 'danger',
         ],
+        'security_terminate_sessions' => [
+            'title' => 'Terminate User Sessions',
+            'description' => 'All active sessions for this user will be terminated immediately.',
+            'confirm_button' => 'Terminate Sessions',
+            'icon' => 'warning',
+        ],
+        'disable_user' => [
+            'title' => 'Disable User Account',
+            'description' => 'This user will be unable to sign in, and all of their sessions will end immediately.',
+            'confirm_button' => 'Disable Account',
+            'icon' => 'danger',
+        ],
+        'enable_user' => [
+            'title' => 'Re-enable User Account',
+            'description' => 'This user will be able to sign in again.',
+            'confirm_button' => 'Re-enable Account',
+            'icon' => 'success',
+        ],
     ];
 
     /**
@@ -105,10 +127,9 @@ class ConfirmActionController extends BaseController
             return $this->redirect($response, '/service-admin');
         }
         
-        // Check if user has recently authenticated (within 15 minutes)
-        $createdAt = $session->getCreatedAt();
-        $authTimestamp = $createdAt ? strtotime($createdAt) : 0;
-        $isRecentlyAuthenticated = (time() - $authTimestamp) <= 900;
+        // Check if user has recently authenticated (within 15 minutes).
+        // Uses the last sign-in time, which OAuth re-authentication refreshes.
+        $isRecentlyAuthenticated = SessionManager::isRecentlyAuthenticated($session);
         
         // Get additional context for display
         $context = $this->getActionContext($pendingAction);
@@ -147,9 +168,7 @@ class ConfirmActionController extends BaseController
         }
         
         // Verify recent authentication
-        $createdAt = $session->getCreatedAt();
-        $authTimestamp = $createdAt ? strtotime($createdAt) : 0;
-        if ((time() - $authTimestamp) > 900) {
+        if (!SessionManager::isRecentlyAuthenticated($session)) {
             $this->flash('error', 'Authentication has expired. Please confirm your identity again.');
             return $this->redirect($response, '/service-admin/confirm-action');
         }
@@ -238,10 +257,19 @@ class ConfirmActionController extends BaseController
                 return $this->doForceGlobalReauth($response, $db, $session);
                 
             case 'delete_user_data':
+                return $this->doDeleteUserData($response, $session, $params);
+
             case 'terminate_user_sessions':
-                // These need more complex handling - redirect to their original controllers
-                $this->flash('error', 'This action type requires direct handling.');
-                return $this->redirect($response, '/service-admin');
+                return $this->doUserAction($response, $session, $params, 'terminate', '/service-admin/privacy/users/' . (int) ($params['user_id'] ?? 0));
+
+            case 'security_terminate_sessions':
+                return $this->doUserAction($response, $session, $params, 'terminate', '/service-admin/security');
+
+            case 'disable_user':
+                return $this->doUserAction($response, $session, $params, 'disable', '/service-admin/security');
+
+            case 'enable_user':
+                return $this->doUserAction($response, $session, $params, 'enable', '/service-admin/security');
                 
             default:
                 $this->flash('error', 'Unknown action type.');
@@ -371,6 +399,53 @@ class ConfirmActionController extends BaseController
         $this->flash('success', "Global re-authentication forced. $count sessions terminated.");
         
         return $this->redirect($response, '/service-admin/maintenance');
+    }
+
+    private function doDeleteUserData(Response $response, $session, array $params): Response
+    {
+        $userId = (int) ($params['user_id'] ?? 0);
+
+        if ($userId === $session->getUserId()) {
+            $this->flash('error', 'You cannot delete your own account.');
+            return $this->redirect($response, '/service-admin/privacy/users/' . $userId);
+        }
+        if (empty($params['confirm'])) {
+            $this->flash('error', 'You must confirm you understand the implications.');
+            return $this->redirect($response, '/service-admin/privacy/users/' . $userId . '/delete');
+        }
+
+        try {
+            $privacyService = $this->get(PrivacyService::class);
+            $changes = $privacyService->anonymiseUserData($userId, $session->getUserId());
+        } catch (\Exception $e) {
+            $this->flash('error', 'Failed to delete user: ' . $e->getMessage());
+            return $this->redirect($response, '/service-admin/privacy/users/' . $userId . '/delete');
+        }
+
+        $this->logAction('delete_user_data', ['user_id' => $userId, 'changes' => count($changes)]);
+        $this->flash('success', 'User account has been anonymised and deactivated. ' . count($changes) . ' change(s) made.');
+
+        return $this->redirect($response, '/service-admin/privacy');
+    }
+
+    private function doUserAction(Response $response, $session, array $params, string $action, string $redirect): Response
+    {
+        $userId = (int) ($params['user_id'] ?? 0);
+
+        try {
+            $message = SecurityController::performUserAction(
+                $this->get(UserAdminService::class),
+                $userId,
+                $session->getUserId(),
+                $session->getId(),
+                $action
+            );
+            $this->flash('success', $message);
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(' ', $e->getErrors()));
+        }
+
+        return $this->redirect($response, $redirect);
     }
 
     private function logAction(string $action, array $details): void

@@ -353,6 +353,19 @@ document.getElementById('transaction-form').addEventListener('submit', function(
             alert('Fund entries must balance to £0.00. Current total: £' + fundTotal.toFixed(2));
             return false;
         }
+
+        // The money moved (the positive entries) must equal the transfer amount
+        let fundTotalIn = 0;
+        fundEntries.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            if (value > 0) fundTotalIn += value;
+        });
+        const transferAmount = parseFloat(document.getElementById('amount').value) || 0;
+        if (Math.abs(fundTotalIn - transferAmount) > 0.005) {
+            e.preventDefault();
+            alert('Fund entries move £' + fundTotalIn.toFixed(2) + ' but the transfer amount is £' + transferAmount.toFixed(2) + '.');
+            return false;
+        }
     }
 
     // Validate cashbook entries if enabled
@@ -372,6 +385,19 @@ document.getElementById('transaction-form').addEventListener('submit', function(
         if (Math.abs(cashbookTotal) > 0.01) {
             e.preventDefault();
             alert('Cashbook entries must balance to £0.00. Current total: £' + cashbookTotal.toFixed(2));
+            return false;
+        }
+
+        // The money moved (the positive entries) must equal the transfer amount
+        let cashbookTotalIn = 0;
+        cashbookEntries.forEach(input => {
+            const value = parseFloat(input.value) || 0;
+            if (value > 0) cashbookTotalIn += value;
+        });
+        const transferAmount = parseFloat(document.getElementById('amount').value) || 0;
+        if (Math.abs(cashbookTotalIn - transferAmount) > 0.005) {
+            e.preventDefault();
+            alert('Cashbook entries move £' + cashbookTotalIn.toFixed(2) + ' but the transfer amount is £' + transferAmount.toFixed(2) + '.');
             return false;
         }
     }

@@ -108,7 +108,41 @@ class MemberService
     }
 
     /**
-     * Get a single member by ID
+     * Throw unless the transaction (if any) belongs to the charity
+     */
+    private function assertTransactionInCharity(?int $transactionId, int $charityId): void
+    {
+        if ($transactionId === null) {
+            return;
+        }
+        $transaction = $this->db->queryOne(
+            "SELECT id FROM transactions WHERE id = ? AND charity_id = ? AND is_deleted = FALSE",
+            [$transactionId, $charityId]
+        );
+        if (!$transaction) {
+            throw new ValidationException(['transaction_id' => 'Transaction not found']);
+        }
+    }
+
+    /**
+     * Throw unless the donor (if any) belongs to the charity
+     */
+    private function assertDonorInCharity(?int $donorId, int $charityId): void
+    {
+        if ($donorId === null) {
+            return;
+        }
+        $donor = $this->db->queryOne(
+            "SELECT id FROM donors WHERE id = ? AND charity_id = ?",
+            [$donorId, $charityId]
+        );
+        if (!$donor) {
+            throw new ValidationException(['donor_id' => 'Donor not found']);
+        }
+    }
+
+    /**
+     * Get a single member by ID (unscoped - callers must check charity_id)
      */
     public function getById(int $memberId): ?array
     {
@@ -147,6 +181,7 @@ class MemberService
     public function create(int $charityId, array $data, ?int $userId = null): int
     {
         $this->validateMember($data);
+        $this->assertDonorInCharity(!empty($data['donor_id']) ? (int) $data['donor_id'] : null, $charityId);
 
         // Check for duplicate member number
         if (!empty($data['member_number'])) {
@@ -193,6 +228,7 @@ class MemberService
         }
 
         $this->validateMember($data);
+        $this->assertDonorInCharity(!empty($data['donor_id']) ? (int) $data['donor_id'] : null, (int) $member['charity_id']);
 
         // Check for duplicate member number (excluding current member)
         if (!empty($data['member_number'])) {
@@ -223,7 +259,7 @@ class MemberService
                 is_active = ?,
                 notes = ?,
                 updated_by_user_id = ?
-             WHERE id = ?",
+             WHERE id = ? AND charity_id = ?",
             [
                 !empty($data['donor_id']) ? (int) $data['donor_id'] : null,
                 trim($data['name']),
@@ -242,6 +278,7 @@ class MemberService
                 !empty($data['notes']) ? $data['notes'] : null,
                 $userId,
                 $memberId,
+                $member['charity_id'],
             ]
         );
 
@@ -251,7 +288,7 @@ class MemberService
     /**
      * Update just the address fields on a member (for syncing from donor record)
      */
-    public function updateAddress(int $memberId, array $address): void
+    public function updateAddress(int $memberId, int $charityId, array $address): void
     {
         $this->db->execute(
             "UPDATE members SET
@@ -260,7 +297,7 @@ class MemberService
                 address_city = ?,
                 address_county = ?,
                 address_postcode = ?
-             WHERE id = ?",
+             WHERE id = ? AND charity_id = ?",
             [
                 !empty($address['address_line1']) ? $address['address_line1'] : null,
                 !empty($address['address_line2']) ? $address['address_line2'] : null,
@@ -268,6 +305,7 @@ class MemberService
                 !empty($address['address_county']) ? $address['address_county'] : null,
                 !empty($address['address_postcode']) ? $address['address_postcode'] : null,
                 $memberId,
+                $charityId,
             ]
         );
     }
@@ -461,21 +499,30 @@ class MemberService
     /**
      * Update a membership type
      */
-    public function updateMembershipType(int $typeId, array $data): void
+    public function updateMembershipType(int $typeId, int $charityId, array $data): void
     {
+        $type = $this->db->queryOne(
+            "SELECT id FROM membership_types WHERE id = ? AND charity_id = ?",
+            [$typeId, $charityId]
+        );
+        if (!$type) {
+            throw new ValidationException(['Membership type not found']);
+        }
+
         $annualFee = $data['annual_fee'] ?? null;
         if ($annualFee === '' || $annualFee === null) {
             $annualFee = '0.00';
         }
         
         $this->db->execute(
-            "UPDATE membership_types SET name = ?, description = ?, annual_fee = ?, sort_order = ? WHERE id = ?",
+            "UPDATE membership_types SET name = ?, description = ?, annual_fee = ?, sort_order = ? WHERE id = ? AND charity_id = ?",
             [
                 trim($data['name']),
                 $data['description'] ?? null,
                 round((float) $annualFee, 2),
                 $data['sort_order'] ?? 0,
                 $typeId,
+                $charityId,
             ]
         );
     }
@@ -601,8 +648,14 @@ class MemberService
             throw new ValidationException(['Dues already exist for this period']);
         }
 
+        $member = $this->get($memberId, $charityId);
+        if (!$member) {
+            throw new ValidationException(['Member not found']);
+        }
+        $transactionId = !empty($data['transaction_id']) ? (int) $data['transaction_id'] : null;
+        $this->assertTransactionInCharity($transactionId, $charityId);
+
         // Check if member has Gift Aid declaration (via linked donor)
-        $member = $this->getById($memberId);
         $isGiftAidEligible = false;
         if ($member && $member['donor_id']) {
             $declaration = $this->db->queryOne(
@@ -630,8 +683,8 @@ class MemberService
             'period_label' => $data['period_label'] ?? null,
             'amount_due' => $amountDue,
             'amount_paid' => $amountPaid,
-            'status' => $data['status'] ?? $status,
-            'transaction_id' => $data['transaction_id'] ?? null,
+            'status' => in_array($data['status'] ?? null, ['pending', 'partial', 'paid', 'waived'], true) ? $data['status'] : $status,
+            'transaction_id' => $transactionId,
             'is_giftaid_eligible' => $isGiftAidEligible,
             'notes' => $data['notes'] ?? null,
             'created_by_user_id' => $userId,
@@ -658,6 +711,7 @@ class MemberService
         if (!$dues) {
             throw new ValidationException(['Dues record not found']);
         }
+        $this->assertTransactionInCharity($transactionId, $charityId);
 
         $newAmountPaid = (float) $dues['amount_paid'] + $amount;
         $amountDue = (float) $dues['amount_due'];
@@ -670,8 +724,8 @@ class MemberService
         }
 
         $this->db->execute(
-            "UPDATE membership_dues SET amount_paid = ?, status = ?, transaction_id = COALESCE(?, transaction_id) WHERE id = ?",
-            [$newAmountPaid, $status, $transactionId, $duesId]
+            "UPDATE membership_dues SET amount_paid = ?, status = ?, transaction_id = COALESCE(?, transaction_id) WHERE id = ? AND charity_id = ?",
+            [$newAmountPaid, $status, $transactionId, $duesId, $charityId]
         );
     }
 
@@ -850,33 +904,35 @@ class MemberService
     /**
      * Link a member to a donor record
      */
-    public function linkToDonor(int $memberId, int $donorId): void
+    public function linkToDonor(int $memberId, int $charityId, int $donorId): void
     {
+        $this->assertDonorInCharity($donorId, $charityId);
+
         $this->db->execute(
-            "UPDATE members SET donor_id = ? WHERE id = ?",
-            [$donorId, $memberId]
+            "UPDATE members SET donor_id = ? WHERE id = ? AND charity_id = ?",
+            [$donorId, $memberId, $charityId]
         );
     }
 
     /**
      * Unlink a member from a donor record
      */
-    public function unlinkFromDonor(int $memberId): void
+    public function unlinkFromDonor(int $memberId, int $charityId): void
     {
         $this->db->execute(
-            "UPDATE members SET donor_id = NULL WHERE id = ?",
-            [$memberId]
+            "UPDATE members SET donor_id = NULL WHERE id = ? AND charity_id = ?",
+            [$memberId, $charityId]
         );
     }
 
     /**
      * Get member linked to a donor
      */
-    public function getByDonorId(int $donorId): ?array
+    public function getByDonorId(int $donorId, int $charityId): ?array
     {
         return $this->db->queryOne(
-            "SELECT id, name, member_number, is_active FROM members WHERE donor_id = ?",
-            [$donorId]
+            "SELECT id, name, member_number, is_active FROM members WHERE donor_id = ? AND charity_id = ?",
+            [$donorId, $charityId]
         );
     }
 

@@ -88,7 +88,13 @@
             Mark as Submitted to HMRC
         </button>
     </form>
-    {% else %}
+    <form id="cancel-claim-form" method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/cancel" class="mt-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="button" class="px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50" onclick="showConfirmModal('Cancel Claim', 'Cancel this draft claim? Its donations and any corrections will be available for another claim.', function() { document.getElementById('cancel-claim-form').submit(); })">
+            Cancel Draft Claim
+        </button>
+    </form>
+    {% elseif claim.status == 'submitted' %}
     <form id="revert-claim-form" method="post" action="/charity/{{ charity.id }}/giftaid/claims/{{ claim.id }}/unsubmit">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="button" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50" onclick="showConfirmModal('Revert to Draft', 'Are you sure you want to revert this claim to draft status?', function() { document.getElementById('revert-claim-form').submit(); })">
@@ -179,23 +185,31 @@
                 {% endfor %}
             </tbody>
             <tfoot class="bg-gray-50">
+                {% set donations_with_underclaims = claim.total_donations + claim.underclaim_adjustment|default(0) %}
                 <tr class="font-semibold">
-                    <td colspan="4" class="px-4 py-4 text-gray-900">Total Donations</td>
-                    <td class="px-4 py-4 text-right text-gray-900">£{{ claim.total_donations|number_format(2) }}</td>
-                    <td class="px-4 py-4 text-center text-green-600">= £{{ claim.total_giftaid|number_format(2) }} GA</td>
+                    <td colspan="4" class="px-4 py-4 text-gray-900">Total Gift Aid donations{{ underclaims|length > 0 ? ' (including corrections)' : '' }}</td>
+                    <td class="px-4 py-4 text-right text-gray-900">£{{ donations_with_underclaims|number_format(2) }}</td>
+                    <td class="px-4 py-4 text-center text-green-600">= £{{ (donations_with_underclaims * 0.25)|number_format(2) }} GA</td>
                 </tr>
-                {% if overclaim_total > 0 %}
+                {% if claim.overclaim_adjustment|default(0) > 0 %}
                 <tr class="text-orange-700 bg-orange-50">
-                    <td colspan="4" class="px-4 py-3">Tax overclaimed to report to HMRC</td>
-                    <td class="px-4 py-3 text-right font-semibold">£{{ (overclaim_total * 0.25)|number_format(2) }}</td>
-                    <td class="px-4 py-3 text-center text-xs">(on £{{ overclaim_total|number_format(2) }})</td>
-                </tr>
-                <tr class="font-semibold border-t border-gray-300">
-                    <td colspan="4" class="px-4 py-4 text-gray-900">Net Tax Reclaim</td>
-                    <td class="px-4 py-4 text-right text-green-700">£{{ (claim.total_giftaid - (overclaim_total * 0.25))|number_format(2) }}</td>
-                    <td></td>
+                    <td colspan="4" class="px-4 py-3">Tax overclaimed in earlier claims, to report to HMRC</td>
+                    <td class="px-4 py-3 text-right font-semibold">£{{ (claim.overclaim_adjustment * 0.25)|number_format(2) }}</td>
+                    <td class="px-4 py-3 text-center text-xs">(on £{{ claim.overclaim_adjustment|number_format(2) }})</td>
                 </tr>
                 {% endif %}
+                {% if claim.gasds_donations > 0 %}
+                <tr>
+                    <td colspan="4" class="px-4 py-3 text-gray-900">GASDS small donations</td>
+                    <td class="px-4 py-3 text-right text-gray-900">£{{ claim.gasds_donations|number_format(2) }}</td>
+                    <td class="px-4 py-3 text-center text-purple-600">= £{{ claim.gasds_giftaid|number_format(2) }} top-up</td>
+                </tr>
+                {% endif %}
+                <tr class="font-semibold border-t border-gray-300">
+                    <td colspan="4" class="px-4 py-4 text-gray-900">Net tax reclaim</td>
+                    <td class="px-4 py-4 text-right text-green-700">£{{ (claim.total_giftaid + claim.gasds_giftaid)|number_format(2) }}</td>
+                    <td></td>
+                </tr>
             </tfoot>
         </table>
         

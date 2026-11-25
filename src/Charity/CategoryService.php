@@ -117,7 +117,8 @@ class CategoryService
      */
     public function getOperationalCategories(int $charityId, ?string $type = null, bool $activeOnly = true): array
     {
-        $sql = "SELECT oc.*, rc.name as reporting_category_name, rc.category_type
+        $sql = "SELECT oc.*, rc.name as reporting_category_name, rc.category_type,
+                       rc.is_active as reporting_category_active
                 FROM operational_categories oc
                 JOIN reporting_categories rc ON rc.id = oc.reporting_category_id
                 WHERE oc.charity_id = ?";
@@ -172,6 +173,21 @@ class CategoryService
     public function updateOperationalCategory(int $id, int $charityId, array $data): void
     {
         $this->db->update('operational_categories', $data, 'id = ? AND charity_id = ?', [$id, $charityId]);
+    }
+
+    /**
+     * Whether an operational category has (non-deleted) transactions dated on or before a date
+     */
+    public function hasTransactionsOnOrBefore(int $operationalCategoryId, int $charityId, string $date): bool
+    {
+        return (int) $this->db->queryValue(
+            "SELECT COUNT(*)
+             FROM transaction_category_entries tce
+             JOIN transactions t ON t.id = tce.transaction_id
+             WHERE tce.operational_category_id = ? AND t.charity_id = ? AND t.is_deleted = FALSE
+               AND t.transaction_date <= ?",
+            [$operationalCategoryId, $charityId, $date]
+        ) > 0;
     }
 
     /**

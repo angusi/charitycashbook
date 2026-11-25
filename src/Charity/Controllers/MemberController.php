@@ -221,7 +221,7 @@ class MemberController extends BaseController
             
             // Sync address to linked donor if requested
             if (!empty($data['sync_address_to_donor']) && $member['donor_id']) {
-                $donorService->updateAddress($member['donor_id'], [
+                $donorService->updateAddress($member['donor_id'], $charityId, [
                     'address_line1' => $data['address_line1'] ?? null,
                     'address_line2' => $data['address_line2'] ?? null,
                     'address_city' => $data['address_city'] ?? null,
@@ -523,7 +523,7 @@ class MemberController extends BaseController
             $this->flash('error', implode(', ', $e->getErrors()));
         }
         
-        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/trustees";
+        $returnTo = $this->safeReturnTo($data, $charityId, "/charity/$charityId/members/trustees");
         return $this->redirect($response, $returnTo);
     }
 
@@ -722,7 +722,7 @@ class MemberController extends BaseController
         }
         
         // Redirect back to dues list or member page
-        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
+        $returnTo = $this->safeReturnTo($data, $charityId, "/charity/$charityId/members/dues");
         return $this->redirect($response, $returnTo);
     }
 
@@ -752,7 +752,7 @@ class MemberController extends BaseController
             $this->flash('error', implode(', ', $e->getErrors()));
         }
         
-        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
+        $returnTo = $this->safeReturnTo($data, $charityId, "/charity/$charityId/members/dues");
         return $this->redirect($response, $returnTo);
     }
 
@@ -780,7 +780,7 @@ class MemberController extends BaseController
             $this->flash('error', implode(', ', $e->getErrors()));
         }
 
-        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
+        $returnTo = $this->safeReturnTo($data, $charityId, "/charity/$charityId/members/dues");
         return $this->redirect($response, $returnTo);
     }
 
@@ -816,7 +816,7 @@ class MemberController extends BaseController
             $this->flash('error', implode(', ', $e->getErrors()));
         }
 
-        $returnTo = $data['return_to'] ?? "/charity/$charityId/members/dues";
+        $returnTo = $this->safeReturnTo($data, $charityId, "/charity/$charityId/members/dues");
         return $this->redirect($response, $returnTo);
     }
 
@@ -896,7 +896,7 @@ class MemberController extends BaseController
             }
             
             $donorId = (int) $data['donor_id'];
-            $memberService->linkToDonor($memberId, $donorId);
+            $memberService->linkToDonor($memberId, $charityId, $donorId);
             
             $auditService->log($charityId, $userId, 'member_linked_donor', 'members', $memberId, [
                 'donor_id' => $donorId,
@@ -929,7 +929,7 @@ class MemberController extends BaseController
                 throw new ValidationException(['Member not found']);
             }
             
-            $memberService->unlinkFromDonor($memberId);
+            $memberService->unlinkFromDonor($memberId, $charityId);
             
             $auditService->log($charityId, $userId, 'member_unlinked_donor', 'members', $memberId);
             
@@ -977,7 +977,7 @@ class MemberController extends BaseController
             ]);
             
             // Link the member to the new donor
-            $memberService->linkToDonor($memberId, $donorId);
+            $memberService->linkToDonor($memberId, $charityId, $donorId);
             
             $auditService->log($charityId, $userId, 'donor_created_from_member', 'members', $memberId, [
                 'donor_id' => $donorId,
@@ -1064,7 +1064,7 @@ class MemberController extends BaseController
                 throw new ValidationException(['Name is required']);
             }
             
-            $memberService->updateMembershipType($typeId, $data);
+            $memberService->updateMembershipType($typeId, $charityId, $data);
             
             $auditService->log($charityId, $userId, 'membership_type_updated', 'membership_types', $typeId, [
                 'name' => $data['name'],
@@ -1113,5 +1113,22 @@ class MemberController extends BaseController
 
         $this->flash('success', 'Member deleted successfully.');
         return $this->redirect($response, "/charity/$charityId/members");
+    }
+
+    /**
+     * Only allow redirects back into this charity's workspace (prevents open redirects)
+     */
+    private function safeReturnTo(array $data, int $charityId, string $default): string
+    {
+        $returnTo = $data['return_to'] ?? '';
+        $prefix = "/charity/$charityId/";
+
+        if (is_string($returnTo) && str_starts_with($returnTo, $prefix)
+            && !str_contains($returnTo, '//') && !str_contains($returnTo, '\\')
+            && !preg_match('/[\r\n]/', $returnTo)) {
+            return $returnTo;
+        }
+
+        return $default;
     }
 }

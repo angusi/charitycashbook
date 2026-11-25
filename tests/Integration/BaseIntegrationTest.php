@@ -186,7 +186,8 @@ abstract class BaseIntegrationTest extends TestCase
                 $c->get(DatabaseInterface::class),
                 $c->get(Logger::class),
                 $c->get(\CharityCashbook\Charity\CategoryService::class),
-                $c->get(\CharityCashbook\Charity\AuditService::class)
+                $c->get(\CharityCashbook\Charity\AuditService::class),
+                $c->get(\CharityCashbook\Charity\DonorService::class)
             )
         );
         
@@ -195,7 +196,16 @@ abstract class BaseIntegrationTest extends TestCase
         );
         
         $container->set(\CharityCashbook\Charity\CashBookService::class, fn($c) => 
-            new \CharityCashbook\Charity\CashBookService($c->get(DatabaseInterface::class))
+            new \CharityCashbook\Charity\CashBookService($c->get(DatabaseInterface::class), $c->get(Logger::class))
+        );
+
+        $container->set(\CharityCashbook\Charity\ReportService::class, fn($c) => 
+            new \CharityCashbook\Charity\ReportService(
+                $c->get(DatabaseInterface::class),
+                $c->get(\CharityCashbook\Charity\FundService::class),
+                $c->get(\CharityCashbook\Charity\CategoryService::class),
+                $c->get(\CharityCashbook\Charity\CashBookService::class)
+            )
         );
         
         $container->set(\CharityCashbook\Charity\GiftAidService::class, fn($c) => 

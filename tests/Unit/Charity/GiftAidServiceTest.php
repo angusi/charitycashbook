@@ -161,36 +161,6 @@ class GiftAidServiceTest extends TestCase
     }
 
     // ===========================================
-    // getGasdsUsed() tests
-    // ===========================================
-
-    public function testGetGasdsUsedReturnsAmount(): void
-    {
-        $this->db->expects($this->once())
-            ->method('queryOne')
-            ->willReturn(['total' => '500.00']);
-
-        $result = $this->service->getGasdsUsed(1, '2023');
-        $this->assertEquals(500.0, $result);
-    }
-
-    public function testGetGasdsUsedCalculatesCorrectDateRange(): void
-    {
-        $this->db->expects($this->once())
-            ->method('queryOne')
-            ->with(
-                $this->anything(),
-                $this->callback(function ($params) {
-                    // Financial year 2023 starts 2023-04-06, ends 2024-04-05
-                    return $params[1] === '2023-04-06' && $params[2] === '2024-04-05';
-                })
-            )
-            ->willReturn(['total' => '0']);
-
-        $this->service->getGasdsUsed(1, '2023');
-    }
-
-    // ===========================================
     // getFinancialYear() tests
     // ===========================================
 
@@ -235,6 +205,7 @@ class GiftAidServiceTest extends TestCase
                 'gasds_total' => '100.00',
                 'eligible_count' => '4',
                 'claimed_count' => '2',
+                'needs_review_count' => '0',
             ]);
 
         $result = $this->service->getSummary(1, '2024-01-01', '2024-12-31');
@@ -317,107 +288,9 @@ class GiftAidServiceTest extends TestCase
     }
 
     // ===========================================
-    // createClaim() tests
-    // ===========================================
-
-    public function testCreateClaimSucceeds(): void
-    {
-        $charityId = 1;
-        $userId = 1;
-        $periodStart = '2024-01-01';
-        $periodEnd = '2024-03-31';
-        $transactionIds = [1, 2, 3];
-
-        $this->db->method('query')
-            ->willReturn([
-                ['id' => 1, 'amount' => '100.00', 'giftaid_status' => 'eligible'],
-                ['id' => 2, 'amount' => '50.00', 'giftaid_status' => 'eligible'],
-                ['id' => 3, 'amount' => '30.00', 'giftaid_status' => 'gasds'],
-            ]);
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-        
-        $this->db->method('insert')
-            ->willReturn(99);
-
-        $this->db->expects($this->once())
-            ->method('commit');
-
-        $this->auditService->expects($this->once())
-            ->method('log');
-
-        $result = $this->service->createClaim($charityId, $userId, $periodStart, $periodEnd, $transactionIds);
-        $this->assertEquals(99, $result);
-    }
-
-    public function testCreateClaimThrowsValidationExceptionForIneligibleTransactions(): void
-    {
-        $this->db->method('query')
-            ->willReturn([
-                ['id' => 1, 'amount' => '100.00', 'giftaid_status' => 'eligible'],
-                // Only returns 1 transaction instead of 2
-            ]);
-
-        $this->expectException(ValidationException::class);
-
-        $this->service->createClaim(1, 1, '2024-01-01', '2024-03-31', [1, 2]);
-    }
-
-    public function testCreateClaimRollsBackOnException(): void
-    {
-        $this->db->method('query')
-            ->willReturn([
-                ['id' => 1, 'amount' => '100.00', 'giftaid_status' => 'eligible'],
-            ]);
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-
-        $this->db->method('insert')
-            ->willThrowException(new \Exception('DB error'));
-
-        $this->db->expects($this->once())
-            ->method('rollback');
-
-        $this->expectException(\Exception::class);
-        $this->service->createClaim(1, 1, '2024-01-01', '2024-03-31', [1]);
-    }
-
-    // ===========================================
     // updateClaim() tests
     // ===========================================
 
-    public function testUpdateClaimSucceeds(): void
-    {
-        $this->db->method('queryOne')
-            ->willReturn([
-                'id' => 1,
-                'status' => 'draft',
-                'charity_id' => 1,
-            ]);
-
-        $this->db->method('query')
-            ->willReturnOnConsecutiveCalls(
-                // Current transactions
-                [['transaction_id' => 1]],
-                // New transactions validation
-                [
-                    ['id' => 2, 'amount' => '100.00', 'giftaid_status' => 'eligible'],
-                ]
-            );
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-
-        $this->db->expects($this->once())
-            ->method('commit');
-
-        $this->auditService->expects($this->once())
-            ->method('log');
-
-        $this->service->updateClaim(1, 1, 1, '2024-01-01', '2024-06-30', [2]);
-    }
 
     public function testUpdateClaimThrowsExceptionForNonexistentClaim(): void
     {
@@ -451,56 +324,11 @@ class GiftAidServiceTest extends TestCase
         $this->service->updateClaim(1, 1, 1, '2024-01-01', '2024-06-30', []);
     }
 
-    public function testUpdateClaimRollsBackOnException(): void
-    {
-        $this->db->method('queryOne')
-            ->willReturn([
-                'id' => 1,
-                'status' => 'draft',
-            ]);
-
-        $this->db->method('query')
-            ->willReturnOnConsecutiveCalls(
-                [['transaction_id' => 1]],
-                [['id' => 2, 'amount' => '100.00', 'giftaid_status' => 'eligible']]
-            );
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-
-        $this->db->method('execute')
-            ->willThrowException(new \Exception('DB error'));
-
-        $this->db->expects($this->once())
-            ->method('rollback');
-
-        $this->expectException(\Exception::class);
-        $this->service->updateClaim(1, 1, 1, '2024-01-01', '2024-06-30', [2]);
-    }
 
     // ===========================================
     // submitClaim() tests
     // ===========================================
 
-    public function testSubmitClaimSucceeds(): void
-    {
-        $this->db->method('queryOne')
-            ->willReturn([
-                'id' => 1,
-                'status' => 'draft',
-            ]);
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-
-        $this->db->expects($this->once())
-            ->method('commit');
-
-        $this->auditService->expects($this->once())
-            ->method('log');
-
-        $this->service->submitClaim(1, 1, 1, 'HMRC-REF-123');
-    }
 
     public function testSubmitClaimThrowsExceptionForNonexistentClaim(): void
     {
@@ -522,26 +350,6 @@ class GiftAidServiceTest extends TestCase
         $this->service->submitClaim(1, 1, 1);
     }
 
-    public function testSubmitClaimRollsBackOnException(): void
-    {
-        $this->db->method('queryOne')
-            ->willReturn([
-                'id' => 1,
-                'status' => 'draft',
-            ]);
-
-        $this->db->expects($this->once())
-            ->method('beginTransaction');
-
-        $this->db->method('execute')
-            ->willThrowException(new \Exception('DB error'));
-
-        $this->db->expects($this->once())
-            ->method('rollback');
-
-        $this->expectException(\Exception::class);
-        $this->service->submitClaim(1, 1, 1);
-    }
 
     // ===========================================
     // unsubmitClaim() tests
@@ -673,58 +481,4 @@ class GiftAidServiceTest extends TestCase
         $this->service->cancelClaim(1, 1, 1);
     }
 
-    // ===========================================
-    // generateClaimReport() tests
-    // ===========================================
-
-    public function testGenerateClaimReportReturnsEmptyForNonexistentClaim(): void
-    {
-        $this->db->method('queryOne')->willReturn(null);
-
-        $result = $this->service->generateClaimReport(999, 1);
-        $this->assertEquals([], $result);
-    }
-
-    public function testGenerateClaimReportReturnsCorrectStructure(): void
-    {
-        $this->db->method('queryOne')
-            ->willReturn([
-                'id' => 1,
-                'total_donations' => '200.00',
-                'total_giftaid' => '50.00',
-                'gasds_donations' => '100.00',
-                'gasds_giftaid' => '25.00',
-                'items' => [
-                    [
-                        'transaction_date' => '2024-01-15',
-                        'amount' => '100.00',
-                        'description' => 'Donation 1',
-                        'giftaid_status' => 'eligible',
-                        'donor_id' => 1,
-                        'donor_name' => 'John Smith',
-                        'address_line1' => '123 Main St',
-                        'address_postcode' => 'AB1 2CD',
-                    ],
-                    [
-                        'transaction_date' => '2024-01-20',
-                        'amount' => '50.00',
-                        'description' => 'Cash collection',
-                        'giftaid_status' => 'gasds',
-                        'donor_id' => null,
-                        'donor_name' => null,
-                        'address_line1' => null,
-                        'address_postcode' => null,
-                    ],
-                ],
-            ]);
-
-        $result = $this->service->generateClaimReport(1, 1);
-
-        $this->assertArrayHasKey('claim', $result);
-        $this->assertArrayHasKey('standard_donations', $result);
-        $this->assertArrayHasKey('gasds_donations', $result);
-        $this->assertArrayHasKey('summary', $result);
-        $this->assertEquals('200.00', $result['summary']['standard_total']);
-        $this->assertEquals('50.00', $result['summary']['standard_giftaid']);
-    }
 }

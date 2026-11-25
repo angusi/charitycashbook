@@ -178,10 +178,10 @@ class CashBookServiceTest extends TestCase
             ->method('execute')
             ->with(
                 $this->stringContains('name = ?'),
-                ['Updated Name', 1]
+                ['Updated Name', 1, 1]
             );
 
-        $this->service->update(1, ['name' => 'Updated Name']);
+        $this->service->update(1, 1, ['name' => 'Updated Name']);
     }
 
     public function testUpdateWithMultipleFields(): void
@@ -200,7 +200,7 @@ class CashBookServiceTest extends TestCase
                 })
             );
 
-        $this->service->update(1, [
+        $this->service->update(1, 1, [
             'name' => 'New Name',
             'description' => 'New Description',
         ]);
@@ -211,7 +211,7 @@ class CashBookServiceTest extends TestCase
         $this->db->expects($this->never())
             ->method('execute');
 
-        $this->service->update(1, []);
+        $this->service->update(1, 1, []);
     }
 
     public function testUpdateIgnoresInvalidFields(): void
@@ -223,7 +223,7 @@ class CashBookServiceTest extends TestCase
                 $this->anything()
             );
 
-        $this->service->update(1, [
+        $this->service->update(1, 1, [
             'name' => 'Valid',
             'invalid_field' => 'ignored',
         ]);
@@ -235,10 +235,10 @@ class CashBookServiceTest extends TestCase
             ->method('execute')
             ->with(
                 $this->stringContains('is_active = ?'),
-                [false, 1]
+                [false, 1, 1]
             );
 
-        $this->service->update(1, ['is_active' => false]);
+        $this->service->update(1, 1, ['is_active' => false]);
     }
 
     // ===========================================
@@ -252,6 +252,7 @@ class CashBookServiceTest extends TestCase
                 // Cash book
                 [
                     'id' => 1,
+                    'charity_id' => 1,
                     'opening_balance' => '1000.00',
                     'opening_balance_date' => '2024-01-01',
                 ],
@@ -277,7 +278,7 @@ class CashBookServiceTest extends TestCase
     {
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
-                ['id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
                 ['total_income' => '100.00', 'total_expenses' => '50.00', 'entry_count' => '5']
             );
 
@@ -300,7 +301,7 @@ class CashBookServiceTest extends TestCase
     {
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
-                ['id' => 1, 'opening_balance' => '500.00', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '500.00', 'opening_balance_date' => '2024-01-01'],
                 ['total_income' => null, 'total_expenses' => null, 'entry_count' => null]
             );
 
@@ -456,24 +457,46 @@ class CashBookServiceTest extends TestCase
     // assignTransactions() tests
     // ===========================================
 
-    public function testAssignTransactionsUpdatesTransactions(): void
+    public function testAssignTransactionsOnlyAssignsThisCharitysTransactions(): void
     {
-        // Mock the transaction lookup and entry creation
-        $this->db->method('queryOne')
-            ->willReturn(['id' => 1, 'amount' => '100.00', 'transaction_type' => 'receipt']);
-        
-        $this->db->method('queryValue')
-            ->willReturn(0); // No existing cashbook entries
+        // Cash book belongs to charity 1
+        $this->db->method('queryOne')->willReturn(['id' => 5, 'charity_id' => 1]);
 
-        $this->db->expects($this->atLeastOnce())
-            ->method('insert')
+        // The scoped query only returns the charity's own unassigned receipts/payments
+        $this->db->expects($this->once())
+            ->method('query')
             ->with(
-                'transaction_cashbook_entries',
-                $this->anything()
-            );
+                $this->logicalAnd(
+                    $this->stringContains('t.charity_id = ?'),
+                    $this->stringContains("t.transaction_type IN ('receipt', 'payment')")
+                ),
+                [1, 2, 3, 1]
+            )
+            ->willReturn([
+                ['id' => 1, 'amount' => '100.00', 'transaction_type' => 'receipt'],
+                ['id' => 2, 'amount' => '40.50', 'transaction_type' => 'payment'],
+            ]);
 
-        $result = $this->service->assignTransactions([1, 2, 3], 5);
-        $this->assertEquals(3, $result);
+        $inserted = [];
+        $this->db->method('insert')->willReturnCallback(function ($table, $data) use (&$inserted) {
+            $inserted[] = $data;
+            return 1;
+        });
+
+        $result = $this->service->assignTransactions(1, [1, 2, 3], 5);
+
+        $this->assertEquals(2, $result);
+        $this->assertSame('100.00', $inserted[0]['amount']);
+        $this->assertSame('-40.50', $inserted[1]['amount']);
+    }
+
+    public function testAssignTransactionsRejectsAnotherCharitysCashBook(): void
+    {
+        $this->db->method('queryOne')->willReturn(null);
+        $this->db->expects($this->never())->method('insert');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->service->assignTransactions(1, [1], 99);
     }
 
     public function testAssignTransactionsReturnsZeroForEmptyArray(): void
@@ -481,7 +504,7 @@ class CashBookServiceTest extends TestCase
         $this->db->expects($this->never())
             ->method('execute');
 
-        $result = $this->service->assignTransactions([], 5);
+        $result = $this->service->assignTransactions(1, [], 5);
         $this->assertEquals(0, $result);
     }
 
@@ -489,14 +512,24 @@ class CashBookServiceTest extends TestCase
     // unassignTransactions() tests
     // ===========================================
 
-    public function testUnassignTransactionsUpdatesTransactions(): void
+    public function testUnassignTransactionsIsScopedToCharity(): void
     {
-        // PHPUnit 10 removed withConsecutive, so we just verify it's called twice
-        $this->db->expects($this->exactly(2))
-            ->method('execute');
+        $sqls = [];
+        $this->db->method('execute')->willReturnCallback(function ($sql, $params) use (&$sqls) {
+            $sqls[] = [$sql, $params];
+            return 2;
+        });
 
-        $result = $this->service->unassignTransactions([1, 2]);
+        $result = $this->service->unassignTransactions(1, [1, 2]);
+
         $this->assertEquals(2, $result);
+        $this->assertCount(2, $sqls);
+        foreach ($sqls as [$sql, $params]) {
+            $this->assertStringContainsString('t.charity_id = ?', $sql);
+            $this->assertSame([1, 2, 1], $params);
+        }
+        // Reconciled entries are never removed
+        $this->assertStringContainsString('tce.is_reconciled = FALSE', $sqls[0][0]);
     }
 
     public function testUnassignTransactionsReturnsZeroForEmptyArray(): void
@@ -504,17 +537,8 @@ class CashBookServiceTest extends TestCase
         $this->db->expects($this->never())
             ->method('execute');
 
-        $result = $this->service->unassignTransactions([]);
+        $result = $this->service->unassignTransactions(1, []);
         $this->assertEquals(0, $result);
-    }
-
-    public function testUnassignTransactionsClearsReconciliationStatus(): void
-    {
-        // The new implementation deletes entries and updates legacy columns
-        $this->db->expects($this->exactly(2))
-            ->method('execute');
-
-        $this->service->unassignTransactions([1]);
     }
 
     // ===========================================
@@ -526,7 +550,7 @@ class CashBookServiceTest extends TestCase
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
                 // getCashBook for calculateBalance
-                ['id' => 1, 'opening_balance' => '1000.00', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '1000.00', 'opening_balance_date' => '2024-01-01'],
                 // Cashbook entries summary for calculateBalance
                 ['total_income' => '500.00', 'total_expenses' => '200.00', 'entry_count' => '10']
             );
@@ -535,9 +559,9 @@ class CashBookServiceTest extends TestCase
             ->method('insert')
             ->with('cash_book_reconciliations', $this->callback(function ($data) {
                 return $data['cash_book_id'] === 1
-                    && $data['statement_balance'] === 1350.00
-                    && $data['expected_balance'] === 1300.00
-                    && $data['discrepancy'] === 50.00
+                    && $data['statement_balance'] === '1350.00'
+                    && $data['expected_balance'] === '1300.00'
+                    && $data['discrepancy'] === '50.00'
                     && $data['reconciled_by_user_id'] === 1;
             }));
 
@@ -555,7 +579,7 @@ class CashBookServiceTest extends TestCase
     {
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
-                ['id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
                 ['total_income' => '0', 'total_expenses' => '0', 'entry_count' => '0']
             );
 
@@ -579,7 +603,7 @@ class CashBookServiceTest extends TestCase
     {
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
-                ['id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '0', 'opening_balance_date' => '2024-01-01'],
                 ['total_income' => '0', 'total_expenses' => '0', 'entry_count' => '0']
             );
 
@@ -662,7 +686,7 @@ class CashBookServiceTest extends TestCase
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls(
                 // CB 1: getCashBook for calculateBalance
-                ['id' => 1, 'opening_balance' => '1000.00', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 1, 'charity_id' => 1, 'opening_balance' => '1000.00', 'opening_balance_date' => '2024-01-01'],
                 // CB 1: Cashbook entries summary
                 ['total_income' => '500.00', 'total_expenses' => '200.00', 'entry_count' => '10'],
                 // CB 1: getLastReconciliation
@@ -670,7 +694,7 @@ class CashBookServiceTest extends TestCase
                 // CB 1: Unreconciled count
                 ['cnt' => '5'],
                 // CB 2: getCashBook for calculateBalance
-                ['id' => 2, 'opening_balance' => '100.00', 'opening_balance_date' => '2024-01-01'],
+                ['id' => 2, 'charity_id' => 1, 'opening_balance' => '100.00', 'opening_balance_date' => '2024-01-01'],
                 // CB 2: Cashbook entries summary
                 ['total_income' => '50.00', 'total_expenses' => '30.00', 'entry_count' => '3'],
                 // CB 2: getLastReconciliation

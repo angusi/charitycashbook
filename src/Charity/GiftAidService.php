@@ -6,6 +6,7 @@ namespace CharityCashbook\Charity;
 
 use CharityCashbook\Core\DatabaseInterface;
 use CharityCashbook\Core\Logger;
+use CharityCashbook\Core\Money;
 use CharityCashbook\Core\Exceptions\ValidationException;
 
 /**
@@ -19,7 +20,8 @@ class GiftAidService
 
     private const GIFTAID_RATE = 0.25; // 25% tax reclaim
     private const GASDS_CLAIM_CAP = 2000.00; // £2,000 cap on GASDS *claim* per tax year (donations up to £8,000)
-    private const GASDS_MATCHING_RATIO = 10; // GASDS claim cannot exceed 10x regular Gift Aid claims
+    private const GASDS_DONATION_CAP_PENCE = 800000; // £8,000 of small donations per tax year
+    private const GASDS_MATCHING_RATIO = 10; // GASDS donations cannot exceed 10x Gift Aid donations in the tax year
 
     public function __construct(DatabaseInterface $db, Logger $logger, AuditService $auditService)
     {
@@ -130,41 +132,11 @@ class GiftAidService
     }
 
     /**
-     * Get GASDS used in a financial year
-     */
-    public function getGasdsUsed(int $charityId, string $financialYear): float
-    {
-        $fyStart = $financialYear . '-04-06';
-        $fyEnd = ((int)$financialYear + 1) . '-04-05';
-        
-        $result = $this->db->queryOne(
-            "SELECT COALESCE(SUM(giftaid_amount), 0) as total
-             FROM transactions
-             WHERE charity_id = ?
-             AND is_deleted = FALSE
-             AND giftaid_status = 'gasds'
-             AND giftaid_amount IS NOT NULL
-             AND transaction_date >= ?
-             AND transaction_date <= ?",
-            [$charityId, $fyStart, $fyEnd]
-        );
-        
-        return (float) $result['total'];
-    }
-
-    /**
-     * Get financial year for a date (UK tax year, April 6)
+     * UK tax year (starting 6 April) for a date, as its starting calendar year
      */
     public function getFinancialYear(string $date): string
     {
-        $d = new \DateTime($date);
-        $year = (int) $d->format('Y');
-        $monthDay = $d->format('m-d');
-        
-        if ($monthDay < '04-06') {
-            return (string) ($year - 1);
-        }
-        return (string) $year;
+        return (string) FinancialYear::taxYear($date);
     }
 
     /**
@@ -227,22 +199,20 @@ class GiftAidService
         $gasdsDonations = (float) $result['gasds_donations'];
         $standardGiftAid = $standardDonations * self::GIFTAID_RATE;
 
-        // GASDS limits (per tax year, but we use financial year for simplicity):
-        // 1. Maximum £2,000 claim (= £8,000 in donations at 25%)
-        // 2. Cannot exceed 10x your regular Gift Aid claims
-        $yearlyGasdsClaimed = $this->getYearlyGasdsClaimTotal($charityId, $dateFrom);
-        
-        // Calculate remaining GASDS claim allowance
-        $absoluteCap = self::GASDS_CLAIM_CAP; // £2,000
-        $matchingCap = $standardGiftAid * self::GASDS_MATCHING_RATIO; // 10x regular Gift Aid
+        // GASDS limits apply per UK tax year: up to £8,000 of small donations (a £2,000 top-up),
+        // and no more than 10x the Gift Aid donations claimed in that tax year
+        $position = $this->gasdsTaxYearPosition($charityId, $dateTo);
+        $yearlyGasdsClaimed = $position['gasds_claimed'];
+        $absoluteCap = self::GASDS_CLAIM_CAP;
+        $matchingCap = ($position['standard_donations'] + $standardDonations) * self::GIFTAID_RATE * self::GASDS_MATCHING_RATIO;
         $effectiveCap = min($absoluteCap, $matchingCap);
-        
+
         $gasdsClaimRemaining = max(0, $effectiveCap - $yearlyGasdsClaimed);
-        
+
         // Convert GASDS donations to potential claim amount
         $potentialGasdsClaim = $gasdsDonations * self::GIFTAID_RATE;
         $claimableGasdsClaim = min($potentialGasdsClaim, $gasdsClaimRemaining);
-        
+
         // Convert back to claimable donation amount for display
         $claimableGasdsDonations = $claimableGasdsClaim / self::GIFTAID_RATE;
 
@@ -260,48 +230,6 @@ class GiftAidService
             'gasds_matching_cap' => round($matchingCap, 2),
             'total_giftaid' => round($standardGiftAid + $claimableGasdsClaim, 2),
         ];
-    }
-
-    /**
-     * Get GASDS claim amount already submitted in the financial year
-     */
-    private function getYearlyGasdsClaimTotal(int $charityId, string $referenceDate): float
-    {
-        // Get charity year end
-        $charity = $this->db->queryOne(
-            "SELECT year_end_day, year_end_month FROM charities WHERE id = ?",
-            [$charityId]
-        );
-
-        // Calculate financial year start
-        $yearEndMonth = (int) $charity['year_end_month'];
-        $yearEndDay = (int) $charity['year_end_day'];
-        
-        $refDate = new \DateTime($referenceDate);
-        $refYear = (int) $refDate->format('Y');
-        $refMonth = (int) $refDate->format('n');
-        
-        // If we're past the year end, financial year started this calendar year
-        // Otherwise it started last calendar year
-        if ($refMonth > $yearEndMonth || ($refMonth == $yearEndMonth && (int)$refDate->format('j') > $yearEndDay)) {
-            $fyStartYear = $refYear;
-        } else {
-            $fyStartYear = $refYear - 1;
-        }
-        
-        $fyStart = sprintf('%04d-%02d-%02d', $fyStartYear, $yearEndMonth, $yearEndDay + 1);
-
-        // Return the GASDS claim amount (not donations) already submitted
-        $result = $this->db->queryValue(
-            "SELECT COALESCE(SUM(gasds_donations * 0.25), 0)
-             FROM giftaid_claims
-             WHERE charity_id = ?
-             AND status = 'submitted'
-             AND claim_period_start >= ?",
-            [$charityId, $fyStart]
-        );
-
-        return (float) $result;
     }
 
     /**
@@ -411,6 +339,10 @@ class GiftAidService
             throw new ValidationException(['transaction' => 'Transaction is not eligible for Gift Aid']);
         }
 
+        if ($transaction['giftaid_claim_id'] !== null) {
+            throw new ValidationException(['transaction' => "Transaction is in Gift Aid claim #{$transaction['giftaid_claim_id']}; remove it from the claim first"]);
+        }
+
         if ($giftaidAmount < 0) {
             throw new ValidationException(['giftaid_amount' => 'Gift Aid amount cannot be negative']);
         }
@@ -421,7 +353,7 @@ class GiftAidService
 
         $this->db->update(
             'transactions',
-            ['giftaid_amount' => $giftaidAmount, 'updated_by_user_id' => $userId],
+            ['giftaid_amount' => Money::normalise($giftaidAmount), 'updated_by_user_id' => $userId],
             'id = ? AND charity_id = ?',
             [$transactionId, $charityId]
         );
@@ -473,6 +405,15 @@ class GiftAidService
             throw new ValidationException(['transaction' => 'Transaction not found or not claimed']);
         }
 
+        $pending = $this->db->queryValue(
+            "SELECT COUNT(*) FROM giftaid_corrections
+             WHERE charity_id = ? AND original_transaction_id = ? AND applied_to_claim_id IS NULL",
+            [$charityId, $transactionId]
+        );
+        if ((int) $pending > 0) {
+            throw new ValidationException(['transaction' => 'This transaction already has a correction waiting for the next claim']);
+        }
+
         if ($correctedAmount < 0) {
             throw new ValidationException(['corrected_amount' => 'Corrected amount cannot be negative']);
         }
@@ -481,11 +422,19 @@ class GiftAidService
             throw new ValidationException(['corrected_amount' => 'Corrected amount cannot exceed transaction amount']);
         }
 
-        $originalAmount = (float)$transaction['giftaid_amount'];
-        $adjustment = $correctedAmount - $originalAmount;
+        // What has been claimed so far: the amount in the original claim plus any
+        // corrections already applied to later claims
+        $applied = $this->db->queryValue(
+            "SELECT COALESCE(SUM(adjustment), 0) FROM giftaid_corrections
+             WHERE charity_id = ? AND original_transaction_id = ? AND applied_to_claim_id IS NOT NULL",
+            [$charityId, $transactionId]
+        );
+        $originalPence = Money::toPence($transaction['giftaid_amount']) + Money::toPence($applied);
+        $originalAmount = Money::fromPence($originalPence);
+        $adjustment = Money::fromPence(Money::toPence($correctedAmount) - $originalPence);
 
         // Don't create a correction if there's no change
-        if (abs($adjustment) < 0.01) {
+        if (Money::toPence($adjustment) === 0) {
             throw new ValidationException(['corrected_amount' => 'Corrected amount is the same as original']);
         }
 
@@ -566,7 +515,219 @@ class GiftAidService
     }
 
     /**
+     * Validate the transactions for a claim and total them.
+     *
+     * Every transaction must belong to the charity, not be deleted, be eligible (or GASDS)
+     * with a confirmed Gift Aid amount, and not be in another claim.
+     *
+     * @param int[] $transactionIds
+     * @return array{rows: array, standard_pence: int, gasds_pence: int}
+     */
+    private function validateClaimItems(int $charityId, array $transactionIds, ?int $claimId): array
+    {
+        $transactionIds = array_values(array_unique(array_map('intval', $transactionIds)));
+        if (!$transactionIds) {
+            throw new ValidationException(['transactions' => 'At least one transaction must be selected']);
+        }
+
+        $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
+        $rows = $this->db->query(
+            "SELECT id, amount, giftaid_amount, giftaid_status, giftaid_claim_id, transaction_date, is_deleted, description
+             FROM transactions
+             WHERE id IN ($placeholders) AND charity_id = ?",
+            array_merge($transactionIds, [$charityId])
+        );
+
+        $problems = [];
+        $found = [];
+        foreach ($rows as $row) {
+            $found[(int) $row['id']] = true;
+            $label = "#{$row['id']} ({$row['description']})";
+
+            if ($row['is_deleted']) {
+                $problems[] = "$label has been deleted";
+            } elseif (!in_array($row['giftaid_status'], ['eligible', 'gasds'], true)) {
+                $problems[] = "$label is no longer eligible for Gift Aid";
+            } elseif ($row['giftaid_amount'] === null) {
+                $problems[] = "$label needs its Gift Aid amount confirming";
+            } elseif ($row['giftaid_claim_id'] !== null && (int) $row['giftaid_claim_id'] !== $claimId) {
+                $problems[] = "$label is already in claim #{$row['giftaid_claim_id']}";
+            }
+        }
+        foreach ($transactionIds as $id) {
+            if (!isset($found[$id])) {
+                $problems[] = "#$id was not found";
+            }
+        }
+
+        if ($problems) {
+            throw new ValidationException(['transactions' => 'These transactions cannot be claimed: ' . implode('; ', $problems)]);
+        }
+
+        $standard = 0;
+        $gasds = 0;
+        foreach ($rows as $row) {
+            if ($row['giftaid_status'] === 'gasds') {
+                $gasds += Money::toPence($row['giftaid_amount']);
+            } else {
+                $standard += Money::toPence($row['giftaid_amount']);
+            }
+        }
+
+        return ['rows' => $rows, 'standard_pence' => $standard, 'gasds_pence' => $gasds];
+    }
+
+    /**
+     * Enforce the GASDS limits for every tax year the claim's GASDS donations fall in:
+     * - at most £8,000 of small donations per tax year (a £2,000 top-up)
+     * - small donations may not exceed 10 times the Gift Aid donations claimed in that tax year
+     *
+     * Other non-cancelled claims (draft or submitted) count towards the limits.
+     */
+    private function assertGasdsLimits(int $charityId, array $rows, ?int $claimId): void
+    {
+        $byYear = [];
+        foreach ($rows as $row) {
+            $year = FinancialYear::taxYear($row['transaction_date']);
+            $byYear[$year] ??= ['gasds' => 0, 'standard' => 0];
+            $key = $row['giftaid_status'] === 'gasds' ? 'gasds' : 'standard';
+            $byYear[$year][$key] += Money::toPence($row['giftaid_amount']);
+        }
+
+        foreach ($byYear as $year => $totals) {
+            if ($totals['gasds'] === 0) {
+                continue;
+            }
+
+            [$start, $end] = FinancialYear::taxYearBounds(sprintf('%04d-04-06', $year));
+            $others = $this->claimedTotalsForTaxYear($charityId, $start, $end, $claimId);
+            $gasds = $totals['gasds'] + $others['gasds'];
+            $standard = $totals['standard'] + $others['standard'];
+            $label = sprintf('%d/%02d', $year, ($year + 1) % 100);
+
+            if ($gasds > self::GASDS_DONATION_CAP_PENCE) {
+                throw new ValidationException([
+                    'gasds' => sprintf(
+                        'GASDS donations for tax year %s would be £%s, over the £%s limit',
+                        $label,
+                        Money::fromPence($gasds),
+                        Money::fromPence(self::GASDS_DONATION_CAP_PENCE)
+                    ),
+                ]);
+            }
+
+            if ($gasds > $standard * self::GASDS_MATCHING_RATIO) {
+                throw new ValidationException([
+                    'gasds' => sprintf(
+                        'GASDS donations for tax year %s (£%s) cannot be more than %d times the Gift Aid donations claimed in that year (£%s)',
+                        $label,
+                        Money::fromPence($gasds),
+                        self::GASDS_MATCHING_RATIO,
+                        Money::fromPence($standard)
+                    ),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Donations already in non-cancelled claims for a tax year, in pence, by scheme
+     *
+     * @return array{standard: int, gasds: int}
+     */
+    private function claimedTotalsForTaxYear(int $charityId, string $start, string $end, ?int $excludeClaimId): array
+    {
+        $rows = $this->db->query(
+            "SELECT COALESCE(gci.original_status, CASE WHEN t.giftaid_status = 'gasds' THEN 'gasds' ELSE 'eligible' END) as scheme,
+                    SUM(t.giftaid_amount) as total
+             FROM giftaid_claim_items gci
+             JOIN giftaid_claims gc ON gc.id = gci.claim_id
+             JOIN transactions t ON t.id = gci.transaction_id
+             WHERE gc.charity_id = ? AND gc.status != 'cancelled'
+               AND (? IS NULL OR gc.id != ?)
+               AND t.is_deleted = FALSE
+               AND t.transaction_date >= ? AND t.transaction_date <= ?
+             GROUP BY scheme",
+            [$charityId, $excludeClaimId, $excludeClaimId, $start, $end]
+        );
+
+        $totals = ['standard' => 0, 'gasds' => 0];
+        foreach ($rows as $row) {
+            $totals[$row['scheme'] === 'gasds' ? 'gasds' : 'standard'] += Money::toPence($row['total']);
+        }
+
+        return $totals;
+    }
+
+    /**
+     * GASDS position for the tax year containing $date (for display)
+     */
+    public function gasdsTaxYearPosition(int $charityId, string $date): array
+    {
+        [$start, $end] = FinancialYear::taxYearBounds($date);
+        $claimed = $this->claimedTotalsForTaxYear($charityId, $start, $end, null);
+
+        $matchingCap = min(self::GASDS_DONATION_CAP_PENCE, $claimed['standard'] * self::GASDS_MATCHING_RATIO);
+
+        return [
+            'tax_year_start' => $start,
+            'tax_year_end' => $end,
+            'gasds_donations' => $claimed['gasds'] / 100,
+            'gasds_claimed' => round($claimed['gasds'] * self::GIFTAID_RATE / 100, 2),
+            'standard_donations' => $claimed['standard'] / 100,
+            'donation_cap' => self::GASDS_DONATION_CAP_PENCE / 100,
+            'claim_cap' => self::GASDS_CLAIM_CAP,
+            'donations_remaining' => max(0, $matchingCap - $claimed['gasds']) / 100,
+        ];
+    }
+
+    /**
+     * Totals for a claim: its donations plus any corrections applied to it
+     */
+    private function claimTotals(int $claimId, int $standardPence, int $gasdsPence): array
+    {
+        $corrections = $this->db->queryOne(
+            "SELECT
+                COALESCE(SUM(CASE WHEN adjustment > 0 THEN adjustment ELSE 0 END), 0) as under,
+                COALESCE(SUM(CASE WHEN adjustment < 0 THEN -adjustment ELSE 0 END), 0) as over
+             FROM giftaid_corrections WHERE applied_to_claim_id = ?",
+            [$claimId]
+        );
+        $under = Money::toPence($corrections['under'] ?? 0);
+        $over = Money::toPence($corrections['over'] ?? 0);
+
+        return [
+            'total_donations' => Money::fromPence($standardPence),
+            'total_giftaid' => Money::fromPence((int) round(($standardPence + $under - $over) * self::GIFTAID_RATE)),
+            'gasds_donations' => Money::fromPence($gasdsPence),
+            'gasds_giftaid' => Money::fromPence((int) round($gasdsPence * self::GIFTAID_RATE)),
+            'underclaim_adjustment' => Money::fromPence($under),
+            'overclaim_adjustment' => Money::fromPence($over),
+        ];
+    }
+
+    /**
+     * Link transactions to a claim, recording their pre-claim status
+     */
+    private function linkItems(int $claimId, array $rows): void
+    {
+        foreach ($rows as $row) {
+            $this->db->insert('giftaid_claim_items', [
+                'claim_id' => $claimId,
+                'transaction_id' => $row['id'],
+                'original_status' => $row['giftaid_status'],
+            ]);
+            $this->db->execute(
+                "UPDATE transactions SET giftaid_claim_id = ? WHERE id = ?",
+                [$claimId, $row['id']]
+            );
+        }
+    }
+
+    /**
      * Create a new claim (draft)
+     *
+     * Pending corrections to earlier claims are applied to this claim.
      */
     public function createClaim(
         int $charityId,
@@ -575,83 +736,59 @@ class GiftAidService
         string $periodEnd,
         array $transactionIds
     ): int {
-        // Verify all transactions are eligible and have confirmed amounts
-        $transactions = $this->db->query(
-            "SELECT id, amount, giftaid_amount, giftaid_status 
-             FROM transactions 
-             WHERE id IN (" . implode(',', array_fill(0, count($transactionIds), '?')) . ")
-             AND charity_id = ?
-             AND is_deleted = FALSE
-             AND giftaid_status IN ('eligible', 'gasds')
-             AND giftaid_claim_id IS NULL
-             AND giftaid_amount IS NOT NULL",
-            array_merge($transactionIds, [$charityId])
-        );
-
-        if (count($transactions) !== count($transactionIds)) {
-            throw new ValidationException(['transactions' => 'Some transactions are not eligible for claiming or need Gift Aid amount confirmation']);
-        }
-
-        // Calculate totals using giftaid_amount
-        $standardTotal = 0;
-        $gasdsTotal = 0;
-        foreach ($transactions as $t) {
-            if ($t['giftaid_status'] === 'gasds') {
-                $gasdsTotal += (float) $t['giftaid_amount'];
-            } else {
-                $standardTotal += (float) $t['giftaid_amount'];
-            }
-        }
+        $this->assertPeriod($periodStart, $periodEnd);
+        $items = $this->validateClaimItems($charityId, $transactionIds, null);
+        $this->assertGasdsLimits($charityId, $items['rows'], null);
 
         $this->db->beginTransaction();
 
         try {
-            // Create claim
             $claimId = $this->db->insert('giftaid_claims', [
                 'charity_id' => $charityId,
                 'claim_period_start' => $periodStart,
                 'claim_period_end' => $periodEnd,
-                'total_donations' => $standardTotal,
-                'total_giftaid' => round($standardTotal * self::GIFTAID_RATE, 2),
-                'gasds_donations' => $gasdsTotal,
-                'gasds_giftaid' => round($gasdsTotal * self::GIFTAID_RATE, 2),
+                'total_donations' => '0.00',
+                'total_giftaid' => '0.00',
                 'status' => 'draft',
                 'created_by_user_id' => $userId,
             ]);
 
-            // Link transactions to claim
-            foreach ($transactionIds as $transactionId) {
-                $this->db->insert('giftaid_claim_items', [
-                    'claim_id' => $claimId,
-                    'transaction_id' => $transactionId,
-                ]);
+            $this->linkItems($claimId, $items['rows']);
 
-                // Update transaction claim reference
-                $this->db->execute(
-                    "UPDATE transactions SET giftaid_claim_id = ? WHERE id = ?",
-                    [$claimId, $transactionId]
-                );
-            }
+            // Apply all pending corrections to earlier claims to this claim
+            $pendingCorrections = $this->db->execute(
+                "UPDATE giftaid_corrections SET applied_to_claim_id = ?
+                 WHERE charity_id = ? AND applied_to_claim_id IS NULL",
+                [$claimId, $charityId]
+            );
 
-            $this->db->commit();
+            $this->db->update(
+                'giftaid_claims',
+                $this->claimTotals($claimId, $items['standard_pence'], $items['gasds_pence']),
+                'id = ?',
+                [$claimId]
+            );
 
             $this->auditService->log($charityId, $userId, 'giftaid_claim.created', 'giftaid_claim', $claimId, [
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
-                'transaction_count' => count($transactionIds),
+                'transaction_count' => count($items['rows']),
+                'corrections_applied' => $pendingCorrections,
             ]);
 
-            $this->logger->info('Gift Aid claim created', [
-                'charity_id' => $charityId,
-                'claim_id' => $claimId,
-                'transactions' => count($transactionIds),
-            ]);
-
-            return $claimId;
+            $this->db->commit();
         } catch (\Exception $e) {
             $this->db->rollback();
             throw $e;
         }
+
+        $this->logger->info('Gift Aid claim created', [
+            'charity_id' => $charityId,
+            'claim_id' => $claimId,
+            'transactions' => count($items['rows']),
+        ]);
+
+        return $claimId;
     }
 
     /**
@@ -674,102 +811,38 @@ class GiftAidService
             throw new ValidationException(['status' => 'Only draft claims can be edited']);
         }
 
-        if (empty($transactionIds)) {
-            throw new ValidationException(['transactions' => 'At least one transaction must be selected']);
-        }
-
-        // Get current transactions in this claim
-        $currentTransactionIds = array_column(
-            $this->db->query(
-                "SELECT transaction_id FROM giftaid_claim_items WHERE claim_id = ?",
-                [$claimId]
-            ),
-            'transaction_id'
-        );
-
-        // Verify new transactions are eligible (either unclaimed OR already in this claim)
-        $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
-        $transactions = $this->db->query(
-            "SELECT id, amount, giftaid_status 
-             FROM transactions 
-             WHERE id IN ($placeholders)
-             AND charity_id = ?
-             AND is_deleted = FALSE
-             AND giftaid_status IN ('eligible', 'gasds', 'claimed')
-             AND (giftaid_claim_id IS NULL OR giftaid_claim_id = ?)",
-            array_merge($transactionIds, [$charityId, $claimId])
-        );
-
-        if (count($transactions) !== count($transactionIds)) {
-            throw new ValidationException(['transactions' => 'Some transactions are not eligible for this claim']);
-        }
-
-        // Calculate totals
-        $standardTotal = 0;
-        $gasdsTotal = 0;
-        foreach ($transactions as $t) {
-            if ($t['giftaid_status'] === 'gasds') {
-                $gasdsTotal += (float) $t['amount'];
-            } else {
-                $standardTotal += (float) $t['amount'];
-            }
-        }
+        $this->assertPeriod($periodStart, $periodEnd);
+        $items = $this->validateClaimItems($charityId, $transactionIds, $claimId);
+        $this->assertGasdsLimits($charityId, $items['rows'], $claimId);
 
         $this->db->beginTransaction();
 
         try {
-            // Remove old claim items and unlink transactions
             $this->db->execute(
-                "UPDATE transactions SET giftaid_claim_id = NULL WHERE giftaid_claim_id = ?",
-                [$claimId]
+                "UPDATE transactions SET giftaid_claim_id = NULL WHERE giftaid_claim_id = ? AND charity_id = ?",
+                [$claimId, $charityId]
             );
-            $this->db->execute(
-                "DELETE FROM giftaid_claim_items WHERE claim_id = ?",
-                [$claimId]
+            $this->db->execute("DELETE FROM giftaid_claim_items WHERE claim_id = ?", [$claimId]);
+
+            $this->linkItems($claimId, $items['rows']);
+
+            $this->db->update(
+                'giftaid_claims',
+                array_merge(
+                    ['claim_period_start' => $periodStart, 'claim_period_end' => $periodEnd],
+                    $this->claimTotals($claimId, $items['standard_pence'], $items['gasds_pence'])
+                ),
+                'id = ? AND charity_id = ?',
+                [$claimId, $charityId]
             );
-
-            // Update claim details
-            $this->db->execute(
-                "UPDATE giftaid_claims SET 
-                    claim_period_start = ?,
-                    claim_period_end = ?,
-                    total_donations = ?,
-                    total_giftaid = ?,
-                    gasds_donations = ?,
-                    gasds_giftaid = ?
-                 WHERE id = ?",
-                [
-                    $periodStart,
-                    $periodEnd,
-                    $standardTotal,
-                    round($standardTotal * self::GIFTAID_RATE, 2),
-                    $gasdsTotal,
-                    round($gasdsTotal * self::GIFTAID_RATE, 2),
-                    $claimId
-                ]
-            );
-
-            // Add new claim items
-            foreach ($transactionIds as $transactionId) {
-                $this->db->insert('giftaid_claim_items', [
-                    'claim_id' => $claimId,
-                    'transaction_id' => $transactionId,
-                ]);
-
-                $this->db->execute(
-                    "UPDATE transactions SET giftaid_claim_id = ? WHERE id = ?",
-                    [$claimId, $transactionId]
-                );
-            }
-
-            $this->db->commit();
 
             $this->auditService->log($charityId, $userId, 'giftaid_claim.updated', 'giftaid_claim', $claimId, [
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
-                'transaction_count' => count($transactionIds),
+                'transaction_count' => count($items['rows']),
             ]);
 
+            $this->db->commit();
         } catch (\Exception $e) {
             $this->db->rollback();
             throw $e;
@@ -778,6 +851,9 @@ class GiftAidService
 
     /**
      * Submit a claim (mark as submitted to HMRC)
+     *
+     * Every item is checked again (it may have been edited, deleted or become ineligible
+     * since the claim was drafted) and the totals are recalculated before submitting.
      */
     public function submitClaim(
         int $claimId,
@@ -794,42 +870,54 @@ class GiftAidService
             throw new ValidationException(['status' => 'Claim is not in draft status']);
         }
 
+        $transactionIds = array_column(
+            $this->db->query("SELECT transaction_id FROM giftaid_claim_items WHERE claim_id = ?", [$claimId]),
+            'transaction_id'
+        );
+        $items = $this->validateClaimItems($charityId, $transactionIds, $claimId);
+        $this->assertGasdsLimits($charityId, $items['rows'], $claimId);
+
         $this->db->beginTransaction();
 
         try {
-            // Update claim status
+            $this->db->update(
+                'giftaid_claims',
+                $this->claimTotals($claimId, $items['standard_pence'], $items['gasds_pence']),
+                'id = ? AND charity_id = ?',
+                [$claimId, $charityId]
+            );
+
             $this->db->execute(
                 "UPDATE giftaid_claims 
                  SET status = 'submitted', submitted_at = NOW(), 
                      submitted_by_user_id = ?, hmrc_reference = ?
-                 WHERE id = ?",
-                [$userId, $hmrcReference, $claimId]
+                 WHERE id = ? AND charity_id = ?",
+                [$userId, $hmrcReference, $claimId, $charityId]
             );
 
-            // Mark transactions as claimed
             $this->db->execute(
                 "UPDATE transactions 
                  SET giftaid_status = 'claimed' 
-                 WHERE giftaid_claim_id = ?",
-                [$claimId]
+                 WHERE giftaid_claim_id = ? AND charity_id = ?",
+                [$claimId, $charityId]
             );
-
-            $this->db->commit();
 
             $this->auditService->log($charityId, $userId, 'giftaid_claim.submitted', 'giftaid_claim', $claimId);
 
-            $this->logger->info('Gift Aid claim submitted', [
-                'charity_id' => $charityId,
-                'claim_id' => $claimId,
-            ]);
+            $this->db->commit();
         } catch (\Exception $e) {
             $this->db->rollback();
             throw $e;
         }
+
+        $this->logger->info('Gift Aid claim submitted', [
+            'charity_id' => $charityId,
+            'claim_id' => $claimId,
+        ]);
     }
 
     /**
-     * Un-submit a claim (revert to draft)
+     * Un-submit a claim (revert to draft), restoring each transaction's pre-claim status
      */
     public function unsubmitClaim(int $claimId, int $charityId, int $userId): void
     {
@@ -845,42 +933,42 @@ class GiftAidService
         $this->db->beginTransaction();
 
         try {
-            // Update claim status
             $this->db->execute(
                 "UPDATE giftaid_claims 
                  SET status = 'draft', submitted_at = NULL, 
                      submitted_by_user_id = NULL, hmrc_reference = NULL
-                 WHERE id = ?",
-                [$claimId]
+                 WHERE id = ? AND charity_id = ?",
+                [$claimId, $charityId]
             );
 
-            // Revert transaction status
+            // Restore the recorded status; claims made before it was recorded fall back to a best guess
             $this->db->execute(
-                "UPDATE transactions 
-                 SET giftaid_status = CASE 
-                     WHEN has_oneoff_declaration = TRUE OR donor_id IS NOT NULL THEN 'eligible'
-                     ELSE 'gasds'
-                 END
-                 WHERE giftaid_claim_id = ?",
-                [$claimId]
+                "UPDATE transactions t
+                 JOIN giftaid_claim_items gci ON gci.transaction_id = t.id AND gci.claim_id = ?
+                 SET t.giftaid_status = COALESCE(
+                     gci.original_status,
+                     CASE WHEN t.has_oneoff_declaration = TRUE OR t.donor_id IS NOT NULL THEN 'eligible' ELSE 'gasds' END
+                 )
+                 WHERE t.giftaid_claim_id = ? AND t.charity_id = ?",
+                [$claimId, $claimId, $charityId]
             );
-
-            $this->db->commit();
 
             $this->auditService->log($charityId, $userId, 'giftaid_claim.unsubmitted', 'giftaid_claim', $claimId);
 
-            $this->logger->info('Gift Aid claim un-submitted', [
-                'charity_id' => $charityId,
-                'claim_id' => $claimId,
-            ]);
+            $this->db->commit();
         } catch (\Exception $e) {
             $this->db->rollback();
             throw $e;
         }
+
+        $this->logger->info('Gift Aid claim un-submitted', [
+            'charity_id' => $charityId,
+            'claim_id' => $claimId,
+        ]);
     }
 
     /**
-     * Cancel a draft claim
+     * Cancel a draft claim, releasing its transactions and corrections
      */
     public function cancelClaim(int $claimId, int $charityId, int $userId): void
     {
@@ -896,67 +984,35 @@ class GiftAidService
         $this->db->beginTransaction();
 
         try {
-            // Remove claim reference from transactions
             $this->db->execute(
-                "UPDATE transactions SET giftaid_claim_id = NULL WHERE giftaid_claim_id = ?",
-                [$claimId]
+                "UPDATE transactions SET giftaid_claim_id = NULL WHERE giftaid_claim_id = ? AND charity_id = ?",
+                [$claimId, $charityId]
             );
 
-            // Update claim status
+            // Corrections applied to this claim go back to pending for the next claim
             $this->db->execute(
-                "UPDATE giftaid_claims SET status = 'cancelled' WHERE id = ?",
-                [$claimId]
+                "UPDATE giftaid_corrections SET applied_to_claim_id = NULL WHERE applied_to_claim_id = ? AND charity_id = ?",
+                [$claimId, $charityId]
             );
 
-            $this->db->commit();
+            $this->db->execute(
+                "UPDATE giftaid_claims SET status = 'cancelled' WHERE id = ? AND charity_id = ?",
+                [$claimId, $charityId]
+            );
 
             $this->auditService->log($charityId, $userId, 'giftaid_claim.cancelled', 'giftaid_claim', $claimId);
+
+            $this->db->commit();
         } catch (\Exception $e) {
             $this->db->rollback();
             throw $e;
         }
     }
 
-    /**
-     * Generate claim report data for HMRC format
-     */
-    public function generateClaimReport(int $claimId, int $charityId): array
+    private function assertPeriod(string $periodStart, string $periodEnd): void
     {
-        $claim = $this->getClaim($claimId, $charityId);
-        if (!$claim) {
-            return [];
+        if (!FinancialYear::isValidDate($periodStart) || !FinancialYear::isValidDate($periodEnd) || $periodStart > $periodEnd) {
+            throw new ValidationException(['period' => 'The claim period must be two valid dates, start before end']);
         }
-
-        $standardDonations = [];
-        $gasdsDonations = [];
-
-        foreach ($claim['items'] as $item) {
-            $row = [
-                'date' => $item['transaction_date'],
-                'amount' => $item['amount'],
-                'description' => $item['description'],
-            ];
-
-            if ($item['giftaid_status'] === 'gasds' || !$item['donor_id']) {
-                $gasdsDonations[] = $row;
-            } else {
-                $row['donor_name'] = $item['donor_name'];
-                $row['donor_address'] = trim($item['address_line1'] . ' ' . $item['address_postcode']);
-                $standardDonations[] = $row;
-            }
-        }
-
-        return [
-            'claim' => $claim,
-            'standard_donations' => $standardDonations,
-            'gasds_donations' => $gasdsDonations,
-            'summary' => [
-                'standard_total' => $claim['total_donations'],
-                'standard_giftaid' => $claim['total_giftaid'],
-                'gasds_total' => $claim['gasds_donations'],
-                'gasds_giftaid' => $claim['gasds_giftaid'],
-                'total_giftaid' => $claim['total_giftaid'] + $claim['gasds_giftaid'],
-            ],
-        ];
     }
 }

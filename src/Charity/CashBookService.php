@@ -6,6 +6,7 @@ namespace CharityCashbook\Charity;
 
 use CharityCashbook\Core\DatabaseInterface;
 use CharityCashbook\Core\Logger;
+use CharityCashbook\Core\Money;
 
 /**
  * Service for managing cash books (bank accounts, petty cash, etc.)
@@ -36,13 +37,24 @@ class CashBookService
     }
 
     /**
-     * Get a single cash book
+     * Get a single cash book (unscoped - callers must check charity_id)
      */
     public function getCashBook(int $id): ?array
     {
         return $this->db->queryOne(
             "SELECT * FROM cash_books WHERE id = ?",
             [$id]
+        );
+    }
+
+    /**
+     * Get a single cash book, only if it belongs to the given charity
+     */
+    public function getCashBookForCharity(int $id, int $charityId): ?array
+    {
+        return $this->db->queryOne(
+            "SELECT * FROM cash_books WHERE id = ? AND charity_id = ?",
+            [$id, $charityId]
         );
     }
 
@@ -69,7 +81,7 @@ class CashBookService
     /**
      * Update a cash book
      */
-    public function update(int $id, array $data): void
+    public function update(int $id, int $charityId, array $data): void
     {
         $updates = [];
         $params = [];
@@ -89,8 +101,9 @@ class CashBookService
         }
 
         $params[] = $id;
+        $params[] = $charityId;
         $this->db->execute(
-            "UPDATE cash_books SET " . implode(', ', $updates) . " WHERE id = ?",
+            "UPDATE cash_books SET " . implode(', ', $updates) . " WHERE id = ? AND charity_id = ?",
             $params
         );
     }
@@ -110,15 +123,19 @@ class CashBookService
         $openingBalance = (float) $cashBook['opening_balance'];
         $openingDate = $cashBook['opening_balance_date'];
 
-        // Build query for cashbook entries (amount is already signed: + for money in, - for money out)
+        // The opening balance is the position at the close of the opening date:
+        // transactions dated on or before it are already included in it, so only
+        // later transactions are counted (same rule as FundService).
+        // Amounts are signed: + for money in, - for money out.
         $sql = "SELECT 
                     COALESCE(SUM(CASE WHEN tce.amount > 0 THEN tce.amount ELSE 0 END), 0) as total_income,
                     COALESCE(SUM(CASE WHEN tce.amount < 0 THEN ABS(tce.amount) ELSE 0 END), 0) as total_expenses,
                     COUNT(*) as entry_count
                 FROM transaction_cashbook_entries tce
                 JOIN transactions t ON t.id = tce.transaction_id
-                WHERE tce.cash_book_id = ? AND t.transaction_date >= ? AND t.is_deleted = FALSE";
-        $params = [$cashBookId, $openingDate];
+                WHERE tce.cash_book_id = ? AND t.charity_id = ?
+                  AND t.transaction_date > ? AND t.is_deleted = FALSE";
+        $params = [$cashBookId, $cashBook['charity_id'], $openingDate];
 
         if ($asOfDate) {
             $sql .= " AND t.transaction_date <= ?";
@@ -129,7 +146,7 @@ class CashBookService
 
         $totalIncome = (float) ($result['total_income'] ?? 0);
         $totalExpenses = (float) ($result['total_expenses'] ?? 0);
-        $currentBalance = $openingBalance + $totalIncome - $totalExpenses;
+        $currentBalance = (Money::toPence($openingBalance) + Money::toPence($totalIncome) - Money::toPence($totalExpenses)) / 100;
 
         return [
             'opening_balance' => $openingBalance,
@@ -216,7 +233,7 @@ class CashBookService
                   AND NOT EXISTS (
                       SELECT 1 FROM transaction_cashbook_entries tce WHERE tce.transaction_id = t.id
                   )
-                  AND t.transaction_date >= (
+                  AND t.transaction_date > (
                       SELECT COALESCE(MIN(opening_balance_date), '1900-01-01')
                       FROM cash_books 
                       WHERE charity_id = t.charity_id AND is_active = TRUE
@@ -268,7 +285,7 @@ class CashBookService
                AND NOT EXISTS (
                    SELECT 1 FROM transaction_cashbook_entries tce WHERE tce.transaction_id = t.id
                )
-               AND t.transaction_date >= (
+               AND t.transaction_date > (
                    SELECT COALESCE(MIN(opening_balance_date), '1900-01-01')
                    FROM cash_books 
                    WHERE charity_id = t.charity_id AND is_active = TRUE
@@ -293,85 +310,92 @@ class CashBookService
 
     /**
      * Assign transactions to a cash book
-     * 
-     * Creates cashbook entries for the full transaction amount.
+     *
+     * Creates cashbook entries for the full transaction amount. Only receipts and
+     * payments belonging to the charity that have no cashbook entries are assigned;
+     * anything else in $transactionIds is skipped.
      */
-    public function assignTransactions(array $transactionIds, int $cashBookId): int
+    public function assignTransactions(int $charityId, array $transactionIds, int $cashBookId): int
     {
+        $transactionIds = array_values(array_unique(array_map('intval', $transactionIds)));
         if (empty($transactionIds)) {
             return 0;
         }
 
-        $count = 0;
-        foreach ($transactionIds as $transactionId) {
-            // Get transaction to determine amount and type
-            $transaction = $this->db->queryOne(
-                "SELECT id, amount, transaction_type FROM transactions WHERE id = ?",
-                [$transactionId]
-            );
-            
-            if (!$transaction) {
-                continue;
-            }
-
-            // Check if already has cashbook entries
-            $existingCount = $this->db->queryValue(
-                "SELECT COUNT(*) FROM transaction_cashbook_entries WHERE transaction_id = ?",
-                [$transactionId]
-            );
-
-            if ($existingCount > 0) {
-                continue; // Skip if already assigned
-            }
-
-            // Calculate signed amount
-            $amount = (float) $transaction['amount'];
-            $signedAmount = $transaction['transaction_type'] === 'receipt' ? $amount : -$amount;
-
-            // Create cashbook entry
-            $this->db->insert('transaction_cashbook_entries', [
-                'transaction_id' => $transactionId,
-                'cash_book_id' => $cashBookId,
-                'amount' => $signedAmount,
-                'is_reconciled' => false,
-            ]);
-
-            // Update legacy column for backwards compatibility
-            $this->db->execute(
-                "UPDATE transactions SET cash_book_id = ? WHERE id = ?",
-                [$cashBookId, $transactionId]
-            );
-
-            $count++;
+        if (!$this->getCashBookForCharity($cashBookId, $charityId)) {
+            throw new \InvalidArgumentException('Invalid cash book');
         }
 
-        return $count;
+        $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
+        $transactions = $this->db->query(
+            "SELECT t.id, t.amount, t.transaction_type
+             FROM transactions t
+             WHERE t.id IN ($placeholders)
+               AND t.charity_id = ?
+               AND t.is_deleted = FALSE
+               AND t.transaction_type IN ('receipt', 'payment')
+               AND NOT EXISTS (
+                   SELECT 1 FROM transaction_cashbook_entries tce WHERE tce.transaction_id = t.id
+               )",
+            array_merge($transactionIds, [$charityId])
+        );
+
+        $this->db->beginTransaction();
+        try {
+            foreach ($transactions as $transaction) {
+                $amount = Money::normalise($transaction['amount']);
+                $signedAmount = $transaction['transaction_type'] === 'receipt' ? $amount : '-' . $amount;
+
+                $this->db->insert('transaction_cashbook_entries', [
+                    'transaction_id' => $transaction['id'],
+                    'cash_book_id' => $cashBookId,
+                    'amount' => $signedAmount,
+                    'is_reconciled' => false,
+                ]);
+
+                // Update legacy column for backwards compatibility
+                $this->db->execute(
+                    "UPDATE transactions SET cash_book_id = ? WHERE id = ? AND charity_id = ?",
+                    [$cashBookId, $transaction['id'], $charityId]
+                );
+            }
+            $this->db->commit();
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            throw $e;
+        }
+
+        return count($transactions);
     }
 
     /**
      * Unassign transactions from cash book
      */
-    public function unassignTransactions(array $transactionIds): int
+    public function unassignTransactions(int $charityId, array $transactionIds): int
     {
+        $transactionIds = array_values(array_unique(array_map('intval', $transactionIds)));
         if (empty($transactionIds)) {
             return 0;
         }
 
         $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
+        $params = array_merge($transactionIds, [$charityId]);
 
-        // Delete cashbook entries
+        // Delete unreconciled cashbook entries for this charity's transactions only
         $this->db->execute(
-            "DELETE FROM transaction_cashbook_entries WHERE transaction_id IN ($placeholders)",
-            $transactionIds
+            "DELETE tce FROM transaction_cashbook_entries tce
+             JOIN transactions t ON t.id = tce.transaction_id
+             WHERE tce.transaction_id IN ($placeholders) AND t.charity_id = ? AND tce.is_reconciled = FALSE",
+            $params
         );
 
         // Update legacy columns
-        $this->db->execute(
-            "UPDATE transactions SET cash_book_id = NULL, is_reconciled = FALSE, reconciled_at = NULL WHERE id IN ($placeholders)",
-            $transactionIds
+        return $this->db->execute(
+            "UPDATE transactions t SET cash_book_id = NULL, is_reconciled = FALSE, reconciled_at = NULL
+             WHERE t.id IN ($placeholders) AND t.charity_id = ?
+               AND NOT EXISTS (SELECT 1 FROM transaction_cashbook_entries tce WHERE tce.transaction_id = t.id)",
+            $params
         );
-
-        return count($transactionIds);
     }
 
     /**
@@ -380,14 +404,14 @@ class CashBookService
     public function reconcile(int $cashBookId, array $data, int $userId): int
     {
         $expectedBalance = $this->calculateBalance($cashBookId, $data['reconciled_date']);
-        $statementBalance = (float) $data['statement_balance'];
-        $discrepancy = $statementBalance - $expectedBalance['current_balance'];
+        $statementBalance = Money::normalise($data['statement_balance']);
+        $discrepancy = Money::fromPence(Money::toPence($statementBalance) - Money::toPence($expectedBalance['current_balance']));
 
         $this->db->insert('cash_book_reconciliations', [
             'cash_book_id' => $cashBookId,
             'reconciled_date' => $data['reconciled_date'],
             'statement_balance' => $statementBalance,
-            'expected_balance' => $expectedBalance['current_balance'],
+            'expected_balance' => Money::normalise($expectedBalance['current_balance']),
             'discrepancy' => $discrepancy,
             'notes' => $data['notes'] ?? null,
             'reconciled_by_user_id' => $userId,
@@ -504,7 +528,7 @@ class CashBookService
         // Get last reconciliation date
         $lastRecon = $this->db->queryOne(
             "SELECT MAX(r.reconciled_date) as last_date
-             FROM cashbook_reconciliations r
+             FROM cash_book_reconciliations r
              JOIN cash_books cb ON cb.id = r.cash_book_id
              WHERE cb.charity_id = ?",
             [$charityId]
@@ -542,8 +566,9 @@ class CashBookService
              JOIN transaction_fund_entries tfe ON tfe.transaction_id = t.id
              WHERE t.charity_id = ?
                AND t.is_deleted = FALSE
+               AND t.transaction_type IN ('receipt', 'payment')
                AND tfe.fund_id = ?
-               AND t.transaction_date >= ?
+               AND t.transaction_date > ?
                AND NOT EXISTS (
                    SELECT 1 FROM transaction_cashbook_entries tce WHERE tce.transaction_id = t.id
                )",
@@ -553,9 +578,8 @@ class CashBookService
         $count = 0;
         foreach ($transactions as $t) {
             // Calculate signed amount for cashbook entry
-            $signedAmount = $t['transaction_type'] === 'receipt' 
-                ? (float) $t['amount'] 
-                : -(float) $t['amount'];
+            $amount = Money::normalise($t['amount']);
+            $signedAmount = $t['transaction_type'] === 'receipt' ? $amount : '-' . $amount;
 
             $this->db->insert('transaction_cashbook_entries', [
                 'transaction_id' => $t['id'],

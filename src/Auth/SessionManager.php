@@ -15,10 +15,12 @@ class SessionManager
     private const TOKEN_LENGTH = 64;
     private const COOKIE_NAME = 'charity_cashbook_session';
 
+    /** Maximum age of the last sign-in for sensitive actions (seconds) */
+    public const RECENT_AUTH_SECONDS = 900;
+
     private DatabaseInterface $db;
     private Logger $logger;
     private int $lifetimeDays;
-
     public function __construct(DatabaseInterface $db, Logger $logger, int $lifetimeDays = 30)
     {
         $this->db = $db;
@@ -49,6 +51,7 @@ class SessionManager
             'user_id' => $userId,
             'charity_sessions' => '{}',
             'expires_at' => date('Y-m-d H:i:s', time() + ($this->lifetimeDays * 86400)),
+            'authenticated_at' => date('Y-m-d H:i:s'),
             'ip_address' => $this->getClientIp(),
             'user_agent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
         ]);
@@ -99,6 +102,32 @@ class SessionManager
         );
 
         return new Session($row);
+    }
+
+    /**
+     * Record that the user has just proved their identity again (OAuth re-authentication)
+     * without creating a new session.
+     */
+    public function markAuthenticated(int $sessionId): void
+    {
+        $this->db->execute(
+            "UPDATE sessions SET authenticated_at = NOW() WHERE id = ?",
+            [$sessionId]
+        );
+    }
+
+    /**
+     * Whether the session's last sign-in is recent enough for a sensitive action
+     */
+    public static function isRecentlyAuthenticated(Session $session): bool
+    {
+        $authenticatedAt = $session->getAuthenticatedAt();
+        if ($authenticatedAt === '') {
+            return false;
+        }
+        $timestamp = strtotime($authenticatedAt);
+
+        return $timestamp !== false && (time() - $timestamp) <= self::RECENT_AUTH_SECONDS;
     }
 
     /**
@@ -281,10 +310,6 @@ class SessionManager
 
     private function getClientIp(): ?string
     {
-        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
-        if ($ip && str_contains($ip, ',')) {
-            $ip = trim(explode(',', $ip)[0]);
-        }
-        return $ip ? substr($ip, 0, 45) : null;
+        return \CharityCashbook\Core\ClientIp::get();
     }
 }

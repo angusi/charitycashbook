@@ -135,6 +135,11 @@ class CategoryController extends BaseController
             
             $categoryService = $this->get(CategoryService::class);
             $auditService = $this->get(AuditService::class);
+
+            // Reporting category must belong to this charity
+            if (!$categoryService->getReportingCategory((int) $data['reporting_category_id'], $charityId)) {
+                throw new ValidationException(['Reporting category not found']);
+            }
             
             $id = $categoryService->createOperationalCategory($charityId, [
                 'name' => trim($data['name']),
@@ -293,10 +298,32 @@ class CategoryController extends BaseController
                 $this->flash('error', 'Category not found.');
                 return $this->redirect($response, "/charity/$charityId/categories");
             }
+
+            // Reporting category must belong to this charity and be the same type
+            // (moving a category between receipts and payments would flip its history)
+            $newReportingCategoryId = (int) $data['reporting_category_id'];
+            $newReporting = $categoryService->getReportingCategory($newReportingCategoryId, $charityId);
+            if (!$newReporting) {
+                throw new ValidationException(['Reporting category not found']);
+            }
+            if ($newReporting['category_type'] !== $category['category_type']) {
+                throw new ValidationException(['An operational category cannot move between receipts and payments']);
+            }
+
+            // Moving a category to a different reporting category restates past reports,
+            // so it is not allowed while the category has transactions in a closed year
+            if ($newReportingCategoryId !== (int) $category['reporting_category_id']) {
+                $lockedUntil = $request->getAttribute('charity')['books_locked_until'] ?? null;
+                if ($lockedUntil && $categoryService->hasTransactionsOnOrBefore($categoryId, $charityId, $lockedUntil)) {
+                    throw new ValidationException([
+                        "This category has transactions in a closed financial year (up to $lockedUntil), so it cannot be moved to a different reporting category",
+                    ]);
+                }
+            }
             
             $categoryService->updateOperationalCategory($categoryId, $charityId, [
                 'name' => trim($data['name']),
-                'reporting_category_id' => (int) $data['reporting_category_id'],
+                'reporting_category_id' => $newReportingCategoryId,
                 'giftaid_eligible_default' => isset($data['giftaid_eligible_default']),
                 'display_order' => isset($data['display_order']) ? (int) $data['display_order'] : $category['display_order'],
             ]);

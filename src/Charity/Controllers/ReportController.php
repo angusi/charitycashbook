@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CharityCashbook\Charity\Controllers;
 
 use CharityCashbook\Core\Controllers\BaseController;
+use CharityCashbook\Charity\FinancialYear;
+use CharityCashbook\Charity\ModuleService;
 use CharityCashbook\Charity\ReportService;
 use CharityCashbook\Charity\TransactionService;
 use CharityCashbook\Charity\FundService;
@@ -20,10 +22,6 @@ class ReportController extends BaseController
 {
     public function index(Request $request, Response $response): Response
     {
-        $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/reports/index.html.twig', array_merge(
             $this->getCommonTemplateData($request),
@@ -34,265 +32,229 @@ class ReportController extends BaseController
     public function receiptsPayments(Request $request, Response $response): Response
     {
         $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-        
-        $reportService = $this->get(ReportService::class);
-        
-        // Default to current financial year
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        
-        $report = $reportService->receiptsAndPayments($charityId, $dateFrom, $dateTo);
-        
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/receipts_payments.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+
+        $report = $this->get(ReportService::class)->receiptsAndPayments($charityId, $dateFrom, $dateTo);
+        if (!$this->cashBooksEnabled($request)) {
+            $report['cash'] = null;
+        }
+
+        return $this->renderReport($request, $response, 'charity/reports/receipts_payments.html.twig', [
+            'report' => $report,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ]);
     }
 
     public function receiptsPaymentsDetailed(Request $request, Response $response): Response
     {
         $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-        
-        $reportService = $this->get(ReportService::class);
-        
-        // Default to current financial year
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        
-        $report = $reportService->detailedReceiptsAndPayments($charityId, $dateFrom, $dateTo);
-        
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/receipts_payments_detailed.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+
+        $report = $this->get(ReportService::class)->detailedReceiptsAndPayments($charityId, $dateFrom, $dateTo);
+        if (!$this->cashBooksEnabled($request)) {
+            $report['cash'] = null;
+        }
+
+        return $this->renderReport($request, $response, 'charity/reports/receipts_payments_detailed.html.twig', [
+            'report' => $report,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ]);
     }
 
     public function fundBreakdown(Request $request, Response $response): Response
     {
         $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-        
-        $reportService = $this->get(ReportService::class);
-        
-        // Default to current financial year
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        
-        $report = $reportService->fundByFundBreakdown($charityId, $dateFrom, $dateTo);
-        
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/fund_breakdown.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
-    }
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
 
-    public function transactions(Request $request, Response $response): Response
-    {
-        $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-        
-        $transactionService = $this->get(TransactionService::class);
-        $fundService = $this->get(FundService::class);
-        
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        $fundId = !empty($params['fund_id']) ? (int) $params['fund_id'] : null;
-        $type = $params['type'] ?? null;
-        
-        $transactions = $transactionService->getTransactions($charityId, [
+        return $this->renderReport($request, $response, 'charity/reports/fund_breakdown.html.twig', [
+            'report' => $this->get(ReportService::class)->fundByFundBreakdown($charityId, $dateFrom, $dateTo),
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
-            'fund_id' => $fundId,
-            'type' => $type,
         ]);
-        $funds = $fundService->getAll($charityId);
-        
-        // Calculate totals
-        $totalReceipts = 0;
-        $totalPayments = 0;
-        foreach ($transactions as $t) {
-            if ($t['transaction_type'] === 'receipt') {
-                $totalReceipts += (float) $t['amount'];
-            } else {
-                $totalPayments += (float) $t['amount'];
-            }
-        }
-        
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/transactions.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'transactions' => $transactions,
-                'funds' => $funds,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'fund_id' => $fundId,
-                'type' => $type,
-                'total_receipts' => $totalReceipts,
-                'total_payments' => $totalPayments,
-            ]
-        ));
-    }
-
-    public function fundSummary(Request $request, Response $response): Response
-    {
-        $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-        
-        $reportService = $this->get(ReportService::class);
-        
-        // Support both cumulative (as_of_date only) and period (date_from + date_to) modes
-        $dateFrom = $params['date_from'] ?? null;
-        $dateTo = $params['date_to'] ?? $params['as_of_date'] ?? date('Y-m-d');
-        
-        $report = $reportService->fundSummary($charityId, $dateTo, $dateFrom);
-        
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/fund_summary.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
-    }
-
-    public function categoryAnalysis(Request $request, Response $response): Response
-    {
-        $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
-        $params = $this->getQueryParams($request);
-
-        $reportService = $this->get(ReportService::class);
-
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        $type = $params['type'] ?? 'receipt';
-
-        $report = $reportService->categoryAnalysis($charityId, $dateFrom, $dateTo, $type);
-
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/category_analysis.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'type' => $type,
-            ]
-        ));
     }
 
     public function fundOperationalBreakdown(Request $request, Response $response): Response
     {
         $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+
+        return $this->renderReport($request, $response, 'charity/reports/fund_operational_breakdown.html.twig', [
+            'report' => $this->get(ReportService::class)->fundByFundOperationalBreakdown($charityId, $dateFrom, $dateTo),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ]);
+    }
+
+    public function transactions(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+        $filters = $this->transactionFilters($request, $dateFrom, $dateTo);
+
+        $transactionService = $this->get(TransactionService::class);
+        $transactions = $transactionService->getTransactions($charityId, $filters);
+        // Same filters and rules as the list: transfers are separate, and with a fund
+        // filter only that fund's part of each transaction is counted
+        $totals = $transactionService->getTotals($charityId, $filters);
+
+        return $this->renderReport($request, $response, 'charity/reports/transactions.html.twig', [
+            'transactions' => $transactions,
+            'funds' => $this->get(FundService::class)->getAll($charityId, false),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'fund_id' => $filters['fund_id'],
+            'type' => $filters['type'],
+            'total_receipts' => $totals['receipts'],
+            'total_payments' => $totals['payments'],
+            'total_transfers' => $totals['transfers'],
+        ]);
+    }
+
+    /**
+     * Download the transactions report as CSV
+     */
+    public function exportTransactions(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+        $filters = $this->transactionFilters($request, $dateFrom, $dateTo);
+
+        $transactions = $this->get(TransactionService::class)->getTransactions($charityId, $filters);
+        $csv = $this->get(ReportService::class)->exportTransactionsCsv($transactions);
+
+        $response->getBody()->write($csv);
+        return $response
+            ->withHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->withHeader('Content-Disposition', sprintf('attachment; filename="transactions-%s-to-%s.csv"', $dateFrom, $dateTo))
+            ->withHeader('Cache-Control', 'no-store');
+    }
+
+    public function fundSummary(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
         $params = $this->getQueryParams($request);
 
-        $reportService = $this->get(ReportService::class);
+        // Cumulative mode (no from date) or period mode (from + to)
+        $dateFrom = $this->validDate($params['date_from'] ?? null);
+        $dateTo = $this->validDate($params['date_to'] ?? $params['as_of_date'] ?? null) ?? date('Y-m-d');
+        if ($dateFrom !== null && $dateFrom > $dateTo) {
+            $this->flash('error', 'The start date must be on or before the end date.');
+            $dateFrom = null;
+        }
 
-        // Default to current financial year
-        $dateFrom = $params['date_from'] ?? $this->getFinancialYearStart($charity);
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
+        return $this->renderReport($request, $response, 'charity/reports/fund_summary.html.twig', [
+            'report' => $this->get(ReportService::class)->fundSummary($charityId, $dateTo, $dateFrom),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ]);
+    }
 
-        $report = $reportService->fundByFundOperationalBreakdown($charityId, $dateFrom, $dateTo);
+    public function categoryAnalysis(Request $request, Response $response): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        [$dateFrom, $dateTo] = $this->getPeriod($request);
+        $type = $this->getQueryParams($request)['type'] ?? 'receipt';
+        if (!in_array($type, ['receipt', 'payment'], true)) {
+            $type = 'receipt';
+        }
 
-        $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/fund_operational_breakdown.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'report' => $report,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
+        return $this->renderReport($request, $response, 'charity/reports/category_analysis.html.twig', [
+            'report' => $this->get(ReportService::class)->categoryAnalysis($charityId, $dateFrom, $dateTo, $type),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'type' => $type,
+        ]);
     }
 
     public function giftAid(Request $request, Response $response): Response
     {
         $charityId = (int) $request->getAttribute('charity_id');
-        $charity = $request->getAttribute('charity');
-        $userRole = $request->getAttribute('user_role');
         $params = $this->getQueryParams($request);
-        
+
+        // Default to the current UK tax year (6 April - 5 April) up to today
+        [$taxYearStart] = FinancialYear::taxYearBounds(date('Y-m-d'));
+        [$dateFrom, $dateTo] = $this->resolvePeriod($params, $taxYearStart, date('Y-m-d'));
+
         $giftAidService = $this->get(GiftAidService::class);
-        
-        // Default to tax year (April 6 - April 5)
-        $year = $params['year'] ?? date('Y');
-        $taxYearStart = ($year - 1) . '-04-06';
-        if (date('m-d') < '04-06') {
-            $taxYearStart = ($year - 2) . '-04-06';
-        }
-        
-        $dateFrom = $params['date_from'] ?? $taxYearStart;
-        $dateTo = $params['date_to'] ?? date('Y-m-d');
-        
-        $summary = $giftAidService->getSummary($charityId, $dateFrom, $dateTo);
-        $claims = $giftAidService->getClaims($charityId);
-        
+
+        return $this->renderReport($request, $response, 'charity/reports/giftaid.html.twig', [
+            'summary' => $giftAidService->getSummary($charityId, $dateFrom, $dateTo),
+            'claims' => $giftAidService->getClaims($charityId),
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ]);
+    }
+
+    private function renderReport(Request $request, Response $response, string $template, array $data): Response
+    {
         $view = Twig::fromRequest($request);
-        return $view->render($response, 'charity/reports/giftaid.html.twig', array_merge(
-            $this->getCommonTemplateData($request),
-            [
-                'summary' => $summary,
-                'claims' => $claims,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-            ]
-        ));
+        return $view->render($response, $template, array_merge($this->getCommonTemplateData($request), $data));
     }
 
     /**
-     * Get financial year start date
+     * Report period from the query string, defaulting to the current financial year to date
+     *
+     * @return array{0: string, 1: string}
      */
-    private function getFinancialYearStart(array $charity): string
+    private function getPeriod(Request $request): array
     {
-        $endMonth = (int) ($charity['year_end_month'] ?? 3);
-        $endDay = (int) ($charity['year_end_day'] ?? 31);
-        $yearEnd = sprintf('%02d-%02d', $endMonth, $endDay);
-        
-        // Start is day after year end
-        $startDate = new \DateTime(date('Y') . '-' . $yearEnd);
-        $startDate->modify('+1 day');
-        
-        // If we're before the year end, use previous year's start
-        $now = new \DateTime();
-        $thisYearEnd = new \DateTime(date('Y') . '-' . $yearEnd);
-        
-        if ($now <= $thisYearEnd) {
-            $startDate->modify('-1 year');
+        $charity = $request->getAttribute('charity');
+
+        return $this->resolvePeriod(
+            $this->getQueryParams($request),
+            FinancialYear::currentStart($charity),
+            date('Y-m-d')
+        );
+    }
+
+    /**
+     * Validate date_from/date_to, falling back to defaults (with a message) when invalid
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function resolvePeriod(array $params, string $defaultFrom, string $defaultTo): array
+    {
+        $from = $params['date_from'] ?? '';
+        $to = $params['date_to'] ?? '';
+
+        $dateFrom = $from === '' ? $defaultFrom : $this->validDate($from);
+        $dateTo = $to === '' ? $defaultTo : $this->validDate($to);
+
+        if ($dateFrom === null || $dateTo === null) {
+            $this->flash('error', 'Please enter valid dates. Showing the default period instead.');
+            return [$defaultFrom, $defaultTo];
         }
-        
-        return $startDate->format('Y-m-d');
+
+        if ($dateFrom > $dateTo) {
+            $this->flash('error', 'The start date must be on or before the end date. Showing the default period instead.');
+            return [$defaultFrom, $defaultTo];
+        }
+
+        return [$dateFrom, $dateTo];
+    }
+
+    private function validDate(mixed $date): ?string
+    {
+        return FinancialYear::isValidDate($date) ? $date : null;
+    }
+
+    private function transactionFilters(Request $request, string $dateFrom, string $dateTo): array
+    {
+        $params = $this->getQueryParams($request);
+        $type = $params['type'] ?? null;
+
+        return [
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'fund_id' => !empty($params['fund_id']) ? (int) $params['fund_id'] : null,
+            'type' => in_array($type, ['receipt', 'payment', 'transfer'], true) ? $type : null,
+        ];
+    }
+
+    private function cashBooksEnabled(Request $request): bool
+    {
+        return $this->get(ModuleService::class)->isModuleEnabled((int) $request->getAttribute('charity_id'), 'cashbooks');
     }
 }

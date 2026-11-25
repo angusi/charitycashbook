@@ -27,7 +27,7 @@ return function (App $app) {
     $app->get('/oauth/callback/{provider}', \CharityCashbook\Auth\Controllers\OAuthCallbackController::class . ':handle');
     $app->post('/oauth/create-account', \CharityCashbook\Auth\Controllers\OAuthCallbackController::class . ':createAccount');
     $app->post('/oauth/link-to-existing', \CharityCashbook\Auth\Controllers\OAuthCallbackController::class . ':linkToExisting');
-    $app->get('/logout', \CharityCashbook\Auth\Controllers\LoginController::class . ':logout');
+    $app->post('/logout', \CharityCashbook\Auth\Controllers\LoginController::class . ':logout');
 
     // Public Gift Aid declaration routes
     $app->get('/giftaid/declare/{token}', \CharityCashbook\Public\Controllers\GiftAidDeclarationController::class . ':show');
@@ -140,12 +140,14 @@ return function (App $app) {
         $group->get('', \CharityCashbook\Charity\Controllers\DashboardController::class . ':index');
 
         // Transactions
-        $group->get('/transactions', \CharityCashbook\Charity\Controllers\TransactionController::class . ':index');
+        $group->get('/transactions', \CharityCashbook\Charity\Controllers\TransactionController::class . ':index')
+            ->add(new PermissionMiddleware('transactions.view'));
         $group->get('/transactions/create', \CharityCashbook\Charity\Controllers\TransactionController::class . ':create')
             ->add(new PermissionMiddleware('transactions.create'));
         $group->post('/transactions', \CharityCashbook\Charity\Controllers\TransactionController::class . ':store')
             ->add(new PermissionMiddleware('transactions.create'));
-        $group->get('/transactions/{id}', \CharityCashbook\Charity\Controllers\TransactionController::class . ':show');
+        $group->get('/transactions/{id}', \CharityCashbook\Charity\Controllers\TransactionController::class . ':show')
+            ->add(new PermissionMiddleware('transactions.view'));
         $group->get('/transactions/{id}/edit', \CharityCashbook\Charity\Controllers\TransactionController::class . ':edit')
             ->add(new PermissionMiddleware('transactions.edit'));
         $group->post('/transactions/{id}', \CharityCashbook\Charity\Controllers\TransactionController::class . ':update')
@@ -155,7 +157,8 @@ return function (App $app) {
             ->add(new PermissionMiddleware('transactions.delete'));
 
         // Funds
-        $group->get('/funds', \CharityCashbook\Charity\Controllers\FundController::class . ':index');
+        $group->get('/funds', \CharityCashbook\Charity\Controllers\FundController::class . ':index')
+            ->add(new PermissionMiddleware('funds.view'));
         $group->get('/funds/create', \CharityCashbook\Charity\Controllers\FundController::class . ':create')
             ->add(new PermissionMiddleware('funds.manage'));
         $group->post('/funds', \CharityCashbook\Charity\Controllers\FundController::class . ':store')
@@ -166,7 +169,8 @@ return function (App $app) {
             ->add(new PermissionMiddleware('funds.manage'));
 
         // Categories
-        $group->get('/categories', \CharityCashbook\Charity\Controllers\CategoryController::class . ':index');
+        $group->get('/categories', \CharityCashbook\Charity\Controllers\CategoryController::class . ':index')
+            ->add(new PermissionMiddleware('categories.view'));
         $group->get('/categories/reporting/create', \CharityCashbook\Charity\Controllers\CategoryController::class . ':createReporting')
             ->add(new PermissionMiddleware('categories.manage'));
         $group->post('/categories/reporting', \CharityCashbook\Charity\Controllers\CategoryController::class . ':storeReporting')
@@ -190,14 +194,16 @@ return function (App $app) {
 
         // Donors (requires donors module)
         $group->group('/donors', function (RouteCollectorProxy $donors) {
-            $donors->get('', \CharityCashbook\Charity\Controllers\DonorController::class . ':index');
+            $donors->get('', \CharityCashbook\Charity\Controllers\DonorController::class . ':index')
+                ->add(new PermissionMiddleware('donors.view_list'));
             $donors->get('/create', \CharityCashbook\Charity\Controllers\DonorController::class . ':create')
                 ->add(new PermissionMiddleware('donors.create'));
             $donors->post('', \CharityCashbook\Charity\Controllers\DonorController::class . ':store')
                 ->add(new PermissionMiddleware('donors.create'));
             $donors->post('/quick-create', \CharityCashbook\Charity\Controllers\DonorController::class . ':quickCreate')
                 ->add(new PermissionMiddleware('donors.create'));
-            $donors->get('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':show');
+            $donors->get('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':show')
+                ->add(new PermissionMiddleware('donors.view_detail'));
             $donors->get('/{id}/edit', \CharityCashbook\Charity\Controllers\DonorController::class . ':edit')
                 ->add(new PermissionMiddleware('donors.edit'));
             $donors->post('/{id}', \CharityCashbook\Charity\Controllers\DonorController::class . ':update')
@@ -250,6 +256,8 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));
             $giftaid->post('/claims/{id}/unsubmit', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':unsubmitClaim')
                 ->add(new PermissionMiddleware('giftaid.manage_claims'));
+            $giftaid->post('/claims/{id}/cancel', \CharityCashbook\Charity\Controllers\GiftAidController::class . ':cancelClaim')
+                ->add(new PermissionMiddleware('giftaid.manage_claims'));
         })->add(new PermissionMiddleware('giftaid.view'))->add(new ModuleMiddleware('giftaid'));
 
         // Reports (requires reports module)
@@ -262,22 +270,28 @@ return function (App $app) {
             $reports->get('/transactions', \CharityCashbook\Charity\Controllers\ReportController::class . ':transactions');
             $reports->get('/fund-summary', \CharityCashbook\Charity\Controllers\ReportController::class . ':fundSummary');
             $reports->get('/category-analysis', \CharityCashbook\Charity\Controllers\ReportController::class . ':categoryAnalysis');
-            $reports->get('/giftaid', \CharityCashbook\Charity\Controllers\ReportController::class . ':giftAid');
-        })->add(new ModuleMiddleware('reports'));
+            $reports->get('/giftaid', \CharityCashbook\Charity\Controllers\ReportController::class . ':giftAid')
+                ->add(new PermissionMiddleware('giftaid.view'));
+            $reports->get('/transactions/export', \CharityCashbook\Charity\Controllers\ReportController::class . ':exportTransactions')
+                ->add(new PermissionMiddleware('reports.export'));
+        })->add(new PermissionMiddleware('reports.view'))->add(new ModuleMiddleware('reports'));
 
         // Members (requires members module)
         $group->group('/members', function (RouteCollectorProxy $members) {
-            $members->get('', \CharityCashbook\Charity\Controllers\MemberController::class . ':index');
+            $members->get('', \CharityCashbook\Charity\Controllers\MemberController::class . ':index')
+                ->add(new PermissionMiddleware('members.view_list'));
             $members->get('/export', \CharityCashbook\Charity\Controllers\MemberController::class . ':exportMembers')
                 ->add(new PermissionMiddleware('members.view_list'));
-            $members->get('/trustees', \CharityCashbook\Charity\Controllers\MemberController::class . ':trustees');
+            $members->get('/trustees', \CharityCashbook\Charity\Controllers\MemberController::class . ':trustees')
+                ->add(new PermissionMiddleware('members.view_list'));
             $members->get('/trustees/export', \CharityCashbook\Charity\Controllers\MemberController::class . ':exportTrustees')
                 ->add(new PermissionMiddleware('members.view_list'));
             $members->get('/create', \CharityCashbook\Charity\Controllers\MemberController::class . ':create')
                 ->add(new PermissionMiddleware('members.create'));
             $members->post('', \CharityCashbook\Charity\Controllers\MemberController::class . ':store')
                 ->add(new PermissionMiddleware('members.create'));
-            $members->get('/dues', \CharityCashbook\Charity\Controllers\MemberController::class . ':dues');
+            $members->get('/dues', \CharityCashbook\Charity\Controllers\MemberController::class . ':dues')
+                ->add(new PermissionMiddleware('members.view_list'));
             $members->get('/dues/generate', \CharityCashbook\Charity\Controllers\MemberController::class . ':bulkDuesForm')
                 ->add(new PermissionMiddleware('members.manage_dues'));
             $members->post('/dues/generate', \CharityCashbook\Charity\Controllers\MemberController::class . ':generateBulkDues')
@@ -288,7 +302,8 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('members.edit'));
             $members->post('/types/{id}', \CharityCashbook\Charity\Controllers\MemberController::class . ':updateType')
                 ->add(new PermissionMiddleware('members.edit'));
-            $members->get('/{id}', \CharityCashbook\Charity\Controllers\MemberController::class . ':show');
+            $members->get('/{id}', \CharityCashbook\Charity\Controllers\MemberController::class . ':show')
+                ->add(new PermissionMiddleware('members.view_detail'));
             $members->get('/{id}/edit', \CharityCashbook\Charity\Controllers\MemberController::class . ':edit')
                 ->add(new PermissionMiddleware('members.edit'));
             $members->post('/{id}', \CharityCashbook\Charity\Controllers\MemberController::class . ':update')
@@ -334,7 +349,8 @@ return function (App $app) {
 
         // Cash Books (requires cashbooks module)
         $group->group('/cashbooks', function (RouteCollectorProxy $cashbooks) {
-            $cashbooks->get('', \CharityCashbook\Charity\Controllers\CashBookController::class . ':index');
+            $cashbooks->get('', \CharityCashbook\Charity\Controllers\CashBookController::class . ':index')
+                ->add(new PermissionMiddleware('cashbooks.view'));
             $cashbooks->get('/setup', \CharityCashbook\Charity\Controllers\CashBookController::class . ':setup')
                 ->add(new PermissionMiddleware('cashbooks.manage'));
             $cashbooks->post('/setup', \CharityCashbook\Charity\Controllers\CashBookController::class . ':completeSetup')
@@ -343,10 +359,12 @@ return function (App $app) {
                 ->add(new PermissionMiddleware('cashbooks.manage'));
             $cashbooks->post('', \CharityCashbook\Charity\Controllers\CashBookController::class . ':store')
                 ->add(new PermissionMiddleware('cashbooks.manage'));
-            $cashbooks->get('/unlinked', \CharityCashbook\Charity\Controllers\CashBookController::class . ':unlinked');
+            $cashbooks->get('/unlinked', \CharityCashbook\Charity\Controllers\CashBookController::class . ':unlinked')
+                ->add(new PermissionMiddleware('cashbooks.view'));
             $cashbooks->post('/assign', \CharityCashbook\Charity\Controllers\CashBookController::class . ':assignTransactions')
                 ->add(new PermissionMiddleware('cashbooks.manage'));
-            $cashbooks->get('/{id}', \CharityCashbook\Charity\Controllers\CashBookController::class . ':show');
+            $cashbooks->get('/{id}', \CharityCashbook\Charity\Controllers\CashBookController::class . ':show')
+                ->add(new PermissionMiddleware('cashbooks.view'));
             $cashbooks->get('/{id}/edit', \CharityCashbook\Charity\Controllers\CashBookController::class . ':edit')
                 ->add(new PermissionMiddleware('cashbooks.manage'));
             $cashbooks->post('/{id}', \CharityCashbook\Charity\Controllers\CashBookController::class . ':update')
@@ -364,6 +382,11 @@ return function (App $app) {
             $settings->post('/general', \CharityCashbook\Charity\Controllers\SettingsController::class . ':updateGeneral')
                 ->add(new PermissionMiddleware('settings.manage'));
             $settings->post('/auth', \CharityCashbook\Charity\Controllers\SettingsController::class . ':updateAuth')
+                ->add(new PermissionMiddleware('settings.manage'));
+            $settings->post('/close-year', \CharityCashbook\Charity\Controllers\SettingsController::class . ':closeYear')
+                ->add(new PermissionMiddleware('settings.manage'));
+            $settings->post('/reopen-year', \CharityCashbook\Charity\Controllers\SettingsController::class . ':reopenYear')
+                ->add(new SensitiveActionMiddleware())
                 ->add(new PermissionMiddleware('settings.manage'));
             
             // Role permissions

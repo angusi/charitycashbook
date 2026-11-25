@@ -89,14 +89,21 @@ class OAuthCallbackController extends BaseController
                 throw new \Exception('Could not get user information from provider');
             }
 
+            $providerRow = $providerService->getProviderById($providerId) ?? [];
+            $emailVerified = $providerService->isEmailVerified($providerRow, $oauthData);
+
             // Handle account linking flow
             if ($isLinking) {
+                if (!$emailVerified) {
+                    $this->flash('error', 'Your sign-in provider did not confirm that you own ' . $oauthEmail . ', so it cannot be linked.');
+                    return $this->redirect($response, '/account');
+                }
                 return $this->handleLinking($request, $response, $providerId, $oauthSubject, $oauthEmail);
             }
 
             // Resolve identity for login
             $identityService = $this->get(IdentityService::class);
-            $result = $identityService->resolveIdentity($providerId, $oauthSubject, $oauthEmail);
+            $result = $identityService->resolveIdentity($providerId, (string) $oauthSubject, $oauthEmail, $emailVerified);
 
             // Log the attempt
             $auditService = $this->get(AuditService::class);
@@ -107,8 +114,10 @@ class OAuthCallbackController extends BaseController
                 // Check if this is a reauth flow with an existing session
                 $existingSession = $sessionManager->validate();
                 if ($existingSession && $existingSession->getUserId() === $result['user']['id']) {
-                    // Reauth flow - use existing session to preserve charity sessions
+                    // Reauth flow - use existing session to preserve charity sessions,
+                    // but record that the user has just proved their identity again
                     $sessionId = $existingSession->getId();
+                    $sessionManager->markAuthenticated($sessionId);
                 } else {
                     // Fresh login - create new session
                     $newSession = $sessionManager->create($result['user']['id']);
@@ -261,6 +270,9 @@ class OAuthCallbackController extends BaseController
 
             // Clear the pending identity
             unset($_SESSION['new_identity']);
+
+            // Prevent session fixation across the login boundary
+            session_regenerate_id(true);
 
             // Create session
             $sessionManager = $this->get(SessionManager::class);

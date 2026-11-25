@@ -332,10 +332,6 @@ class AuditService
 
     private function getClientIp(): ?string
     {
-        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
-        if ($ip && str_contains($ip, ',')) {
-            $ip = trim(explode(',', $ip)[0]);
-        }
-        return $ip ? substr($ip, 0, 45) : null;
+        return \CharityCashbook\Core\ClientIp::get();
     }
 }

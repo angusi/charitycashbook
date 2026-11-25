@@ -213,38 +213,18 @@ class PrivacyController extends BaseController
     public function terminateUserSessions(Request $request, Response $response, array $args): Response
     {
         $session = $request->getAttribute('session');
-        $adminUserId = $session->getUserId();
         $userId = (int) $args['id'];
 
-        $db = $this->get(DatabaseInterface::class);
-
-        // Get user info for logging
-        $user = $db->queryOne("SELECT display_name FROM users WHERE id = ?", [$userId]);
-        if (!$user) {
-            $this->flash('error', 'User not found.');
+        try {
+            $service = $this->get(\CharityCashbook\ServiceAdmin\UserAdminService::class);
+            $user = $service->getUser($userId);
+            $count = $service->terminateSessions($userId, $session->getUserId(), $session->getId(), 'privacy');
+            $this->flash('success', "Terminated $count session(s) for {$user['display_name']}.");
+        } catch (\CharityCashbook\Core\Exceptions\ValidationException $e) {
+            $this->flash('error', implode(' ', $e->getErrors()));
             return $this->redirect($response, '/service-admin/privacy');
         }
 
-        // Delete all sessions for this user (except current admin's if they happen to be viewing their own)
-        $currentSessionId = $session->getId();
-        $count = $db->execute(
-            "DELETE FROM sessions WHERE user_id = ? AND id != ?",
-            [$userId, $currentSessionId]
-        );
-
-        // Log the action
-        $db->insert('audit_log', [
-            'user_id' => $adminUserId,
-            'action' => 'user_sessions_terminated',
-            'entity_type' => 'user',
-            'entity_id' => $userId,
-            'details' => json_encode([
-                'sessions_terminated' => $count,
-                'target_user' => $user['display_name'],
-            ]),
-        ]);
-
-        $this->flash('success', "Terminated $count session(s) for {$user['display_name']}.");
         return $this->redirect($response, '/service-admin/privacy/users/' . $userId);
     }
 }

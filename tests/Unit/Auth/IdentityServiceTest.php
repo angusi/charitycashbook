@@ -37,11 +37,36 @@ class IdentityServiceTest extends TestCase
         $this->db->method('queryOne')
             ->willReturnOnConsecutiveCalls($identity, $user);
 
-        $result = $this->service->resolveIdentity(1, 'subject123', 'test@example.com');
+        $result = $this->service->resolveIdentity(1, 'subject123', 'test@example.com', true);
 
         $this->assertEquals('existing_user', $result['status']);
         $this->assertEquals($user, $result['user']);
         $this->assertEquals($identity, $result['identity']);
+    }
+
+    public function testResolveIdentityStillAcceptsKnownSubjectWithUnverifiedEmail(): void
+    {
+        $identity = ['id' => 1, 'user_id' => 5, 'oauth_email' => 'test@example.com'];
+        $user = ['id' => 5, 'display_name' => 'Test User', 'is_active' => true];
+
+        $this->db->method('queryOne')
+            ->willReturnOnConsecutiveCalls($identity, $user);
+
+        $result = $this->service->resolveIdentity(1, 'subject123', 'test@example.com', false);
+
+        $this->assertEquals('existing_user', $result['status']);
+    }
+
+    public function testResolveIdentityRejectsUnverifiedEmailForUnknownSubject(): void
+    {
+        // No identity for this subject; an existing user with the same email must NOT be matched
+        $this->db->method('queryOne')->willReturn(null);
+        $this->db->expects($this->never())->method('insert');
+
+        $this->expectException(AuthenticationException::class);
+        $this->expectExceptionMessage('did not confirm');
+
+        $this->service->resolveIdentity(1, 'attacker-subject', 'admin@example.com', false);
     }
 
     public function testResolveIdentityThrowsForInactiveUser(): void
@@ -55,7 +80,7 @@ class IdentityServiceTest extends TestCase
         $this->expectException(AuthenticationException::class);
         $this->expectExceptionMessage('User account is inactive');
 
-        $this->service->resolveIdentity(1, 'subject123', 'test@example.com');
+        $this->service->resolveIdentity(1, 'subject123', 'test@example.com', true);
     }
 
     public function testResolveIdentityLinksExistingUserByEmail(): void
@@ -76,7 +101,7 @@ class IdentityServiceTest extends TestCase
                     && $data['oauth_subject'] === 'subject123';
             }));
 
-        $result = $this->service->resolveIdentity(1, 'subject123', 'test@example.com');
+        $result = $this->service->resolveIdentity(1, 'subject123', 'test@example.com', true);
 
         $this->assertEquals('existing_user', $result['status']);
         $this->assertEquals($user, $result['user']);
@@ -95,7 +120,7 @@ class IdentityServiceTest extends TestCase
         $this->expectException(AuthenticationException::class);
         $this->expectExceptionMessage('User account is inactive');
 
-        $this->service->resolveIdentity(1, 'subject123', 'test@example.com');
+        $this->service->resolveIdentity(1, 'subject123', 'test@example.com', true);
     }
 
     public function testResolveIdentityThrowsForUnauthorisedEmail(): void
@@ -109,7 +134,7 @@ class IdentityServiceTest extends TestCase
         $this->expectException(AuthenticationException::class);
         $this->expectExceptionMessage('Email address not authorised for any charity');
 
-        $this->service->resolveIdentity(1, 'subject123', 'unknown@example.com');
+        $this->service->resolveIdentity(1, 'subject123', 'unknown@example.com', true);
     }
 
     public function testResolveIdentityReturnsNewIdentityStatus(): void
@@ -124,7 +149,7 @@ class IdentityServiceTest extends TestCase
         $this->db->method('query')
             ->willReturn($charities);
 
-        $result = $this->service->resolveIdentity(1, 'subject123', 'new@example.com');
+        $result = $this->service->resolveIdentity(1, 'subject123', 'new@example.com', true);
 
         $this->assertEquals('new_identity', $result['status']);
         $this->assertEquals('new@example.com', $result['email']);
@@ -146,7 +171,7 @@ class IdentityServiceTest extends TestCase
         $this->db->method('query')
             ->willReturn($charities);
 
-        $result = $this->service->resolveIdentity(1, 'subject123', 'new@example.com');
+        $result = $this->service->resolveIdentity(1, 'subject123', 'new@example.com', true);
 
         $this->assertFalse($result['can_link']);
     }

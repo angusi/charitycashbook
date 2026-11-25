@@ -96,7 +96,7 @@ class DonorController extends BaseController
         
         $declarations = $donorService->getDeclarations($donorId, $charityId);
         $donations = $donorService->getDonations($donorId, $charityId);
-        $linkedMember = $memberService->getByDonorId($donorId);
+        $linkedMember = $memberService->getByDonorId($donorId, $charityId);
         
         // Check for active declaration token
         $activeToken = $tokenService->getActiveToken($donorId, $charityId);
@@ -201,7 +201,7 @@ class DonorController extends BaseController
         }
         
         $declarations = $donorService->getDeclarations($donorId, $charityId);
-        $linkedMember = $memberService->getByDonorId($donorId);
+        $linkedMember = $memberService->getByDonorId($donorId, $charityId);
         
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/donors/edit.html.twig', array_merge(
@@ -248,9 +248,9 @@ class DonorController extends BaseController
             
             // Sync address to linked member if requested
             if (!empty($data['sync_address_to_member'])) {
-                $linkedMember = $memberService->getByDonorId($donorId);
+                $linkedMember = $memberService->getByDonorId($donorId, $charityId);
                 if ($linkedMember) {
-                    $memberService->updateAddress($linkedMember['id'], [
+                    $memberService->updateAddress($linkedMember['id'], $charityId, [
                         'address_line1' => $data['address_line1'] ?? null,
                         'address_line2' => $data['address_line2'] ?? null,
                         'address_city' => $data['city'] ?? null,
@@ -307,7 +307,7 @@ class DonorController extends BaseController
             }
             
             // Check if donor already has a linked member
-            $existingMember = $memberService->getByDonorId($donorId);
+            $existingMember = $memberService->getByDonorId($donorId, $charityId);
             if ($existingMember) {
                 throw new ValidationException(['Donor is already linked to a member record']);
             }

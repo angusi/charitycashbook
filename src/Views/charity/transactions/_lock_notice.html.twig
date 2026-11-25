@@ -1,0 +1,35 @@
+{#
+  Explains why parts of a transaction can't be changed, and flags allocations to review.
+  Expects: transaction, charity
+#}
+{% set notices = [] %}
+{% if charity.books_locked_until and transaction.transaction_date <= charity.books_locked_until %}
+    {% set notices = notices|merge(['The books are closed up to ' ~ charity.books_locked_until ~ ', so this transaction cannot be changed. An administrator can reopen the year in Settings.']) %}
+{% endif %}
+{% if transaction.giftaid_status == 'claimed' %}
+    {% set notices = notices|merge(['This donation has been claimed for Gift Aid. Only the description and reference can change; to correct the claim, add a Gift Aid correction.']) %}
+{% elseif transaction.giftaid_claim_id %}
+    {% set notices = notices|merge(['This donation is in draft Gift Aid claim #' ~ transaction.giftaid_claim_id ~ '. Remove it from the claim before changing the amount, date, donor, categories or Gift Aid details.']) %}
+{% endif %}
+{% if transaction.is_reconciled_any %}
+    {% set notices = notices|merge(['This transaction has been reconciled to a bank statement, so its amount, date and cash book cannot change.']) %}
+{% endif %}
+
+{% if notices is not empty %}
+<div class="mb-4 p-4 rounded-md bg-yellow-50 border border-yellow-200" role="status">
+    <ul class="text-sm text-yellow-800 space-y-1">
+        {% for notice in notices %}
+            <li>{{ notice }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if transaction.allocation_needs_review %}
+<div class="mb-4 p-4 rounded-md bg-orange-50 border border-orange-200" role="status">
+    <p class="text-sm text-orange-800">
+        This transaction was split across several funds and several categories before each line recorded its own fund.
+        Its fund for each category was estimated in proportion. Check the split lines and save the transaction to confirm them.
+    </p>
+</div>
+{% endif %}

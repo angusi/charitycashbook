@@ -84,6 +84,13 @@
             </select>
         </div>
         <div class="flex items-end">
+            <label class="flex items-center text-sm text-gray-700">
+                <input type="checkbox" name="needs_review" value="1" {{ filters.needs_review ? 'checked' : '' }}
+                       class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                <span class="ml-2">Needs allocation review</span>
+            </label>
+        </div>
+        <div class="flex items-end">
             <button type="submit" class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                 Filter
             </button>
@@ -92,7 +99,11 @@
 </div>
 
 <!-- Summary -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+{% set dimension_filter = filters.fund_id or filters.category_id or filters.cash_book_id|default(null) %}
+{% if dimension_filter %}
+<p class="mb-2 text-xs text-gray-500">Totals show only the part of each transaction in the selected fund or category.</p>
+{% endif %}
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
     <div class="bg-white rounded-lg shadow p-4">
         <p class="text-sm text-gray-500">Total Receipts</p>
         <p class="text-xl font-semibold text-green-600">£{{ total_receipts|number_format(2) }}</p>
@@ -106,6 +117,10 @@
         <p class="text-xl font-semibold {{ (total_receipts - total_payments) >= 0 ? 'text-green-600' : 'text-red-600' }}">
             £{{ (total_receipts - total_payments)|number_format(2) }}
         </p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <p class="text-sm text-gray-500">{{ dimension_filter ? 'Net transfers in/(out)' : 'Transfers between funds/cash books' }}</p>
+        <p class="text-xl font-semibold text-blue-600">£{{ total_transfers|number_format(2) }}</p>
     </div>
 </div>
 
@@ -174,6 +189,12 @@
                                 -£{{ t.amount|number_format(2) }}
                             {% else %}
                                 ⇄ £{{ t.amount|number_format(2) }}
+                            {% endif %}
+                            {% if t.filtered_amount is not null and (t.filtered_amount|abs) != (t.amount|abs) %}
+                                <span class="block text-xs font-normal text-gray-500">£{{ t.filtered_amount|abs|number_format(2) }} in filter</span>
+                            {% endif %}
+                            {% if t.allocation_needs_review %}
+                                <span class="block text-xs font-normal text-orange-600">Check allocation</span>
                             {% endif %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-center">

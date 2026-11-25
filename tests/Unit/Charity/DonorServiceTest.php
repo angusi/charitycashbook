@@ -219,7 +219,7 @@ class DonorServiceTest extends TestCase
     {
         $this->db->expects($this->once())->method('execute');
 
-        $this->service->updateAddress(1, [
+        $this->service->updateAddress(1, 1, [
             'address_line1' => '123 Street',
             'address_postcode' => 'AB1 2CD',
         ]);
@@ -391,7 +391,7 @@ class DonorServiceTest extends TestCase
     {
         $this->db->expects($this->once())->method('execute');
 
-        $this->service->updateAddress(1, []);
+        $this->service->updateAddress(1, 1, []);
     }
 
     public function testAddDeclarationWithCoversPast(): void

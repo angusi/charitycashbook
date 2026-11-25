@@ -1,0 +1,79 @@
+{#
+  Receipts & payments summary: net, transfers between funds, funds at start and end,
+  and (when cash books are in use) the cash position to reconcile against.
+  Expects: report (with fund_types, fund_type_labels, totals, cash)
+#}
+{% set cols = report.fund_types %}
+<div class="mb-8">
+    <h3 class="text-lg font-bold text-gray-900 border-b-2 border-blue-500 pb-2 mb-4">SUMMARY OF FUNDS</h3>
+    <table class="w-full">
+        <thead>
+            <tr class="text-sm text-gray-500">
+                <th class="text-left pb-2"></th>
+                {% for type in cols %}
+                    <th class="text-right pb-2">{{ report.fund_type_labels[type] }}</th>
+                {% endfor %}
+                <th class="text-right pb-2">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set rows = [
+                {key: 'net', label: 'Net receipts/(payments)', strong: false},
+                {key: 'transfers_net', label: 'Transfers between funds', strong: false},
+                {key: 'opening', label: 'Funds at start of period', strong: false},
+                {key: 'closing', label: 'Funds at end of period', strong: true},
+            ] %}
+            {% for row in rows %}
+                <tr class="border-b border-gray-100 {{ row.strong ? 'bg-blue-50 font-bold' : '' }}">
+                    <td class="py-2 text-sm text-gray-900">{{ row.label }}</td>
+                    {% for type in cols %}
+                        {% set value = report.totals[row.key][type]|default(0) %}
+                        <td class="py-2 text-sm text-right text-gray-900">{{ value < 0 ? '(£' ~ (value|abs|number_format(2)) ~ ')' : '£' ~ value|number_format(2) }}</td>
+                    {% endfor %}
+                    {% set value = report.totals[row.key]['total']|default(0) %}
+                    <td class="py-2 text-sm text-right text-gray-900">{{ value < 0 ? '(£' ~ (value|abs|number_format(2)) ~ ')' : '£' ~ value|number_format(2) }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="mt-2 text-xs text-gray-500">
+        Funds at start + net receipts/(payments) + transfers = funds at end, for each column.
+    </p>
+</div>
+
+{% if report.cash %}
+<div class="mb-8">
+    <h3 class="text-lg font-bold text-gray-900 border-b-2 border-gray-400 pb-2 mb-4">CASH AT {{ report.period_end }}</h3>
+    <table class="w-full">
+        <tbody>
+            {% for book in report.cash.cash_books %}
+                <tr class="border-b border-gray-100">
+                    <td class="py-2 text-sm text-gray-900">{{ book.cash_book.name }}{{ book.cash_book.is_active ? '' : ' (inactive)' }}</td>
+                    <td class="py-2 text-sm text-right text-gray-900">£{{ book.balance|number_format(2) }}</td>
+                </tr>
+            {% endfor %}
+            <tr class="font-bold">
+                <td class="py-2 text-sm text-gray-900">Total cash and bank</td>
+                <td class="py-2 text-sm text-right text-gray-900">£{{ report.cash.total|number_format(2) }}</td>
+            </tr>
+            <tr>
+                <td class="py-2 text-sm text-gray-900">Total funds</td>
+                <td class="py-2 text-sm text-right text-gray-900">£{{ report.cash.total_funds|number_format(2) }}</td>
+            </tr>
+            <tr class="{{ report.cash.difference != 0 ? 'text-red-700' : 'text-green-700' }}">
+                <td class="py-2 text-sm font-medium">Difference</td>
+                <td class="py-2 text-sm text-right font-medium">£{{ report.cash.difference|number_format(2) }}</td>
+            </tr>
+        </tbody>
+    </table>
+    {% if report.cash.difference != 0 %}
+        <p class="mt-2 text-xs text-red-700">
+            Cash and bank balances do not match the funds.
+            {% if report.cash.unassigned_count > 0 %}
+                {{ report.cash.unassigned_count }} transaction(s) are not assigned to a cash book.
+            {% endif %}
+            Check that every transaction is assigned to a cash book and that opening balances agree.
+        </p>
+    {% endif %}
+</div>
+{% endif %}

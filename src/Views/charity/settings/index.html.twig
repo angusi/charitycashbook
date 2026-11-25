@@ -138,6 +138,47 @@
             </form>
         </div>
 
+        <!-- Financial years (year-end close) -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Financial Years</h2>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+                <p class="text-sm text-gray-700">
+                    {% if books.locked_until %}
+                        The books are closed up to <strong>{{ books.locked_until }}</strong>.
+                        Transactions, opening balances and fund types that affect a closed year cannot be changed.
+                    {% else %}
+                        No financial years are closed. Close a year once its accounts are finalised so its figures cannot change.
+                    {% endif %}
+                </p>
+                {% if permissions.settings_manage %}
+                <div class="flex flex-wrap gap-3">
+                    {% if books.close_candidate %}
+                    <form method="post" action="/charity/{{ charity.id }}/settings/close-year">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit"
+                                onclick="return confirm('Close the financial year {{ books.close_candidate_start }} to {{ books.close_candidate }}? Nothing dated on or before {{ books.close_candidate }} can be changed afterwards.')"
+                                class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                            Close year ending {{ books.close_candidate }}
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if books.locked_until %}
+                    <form method="post" action="/charity/{{ charity.id }}/settings/reopen-year">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit"
+                                onclick="return confirm('Reopen the year ending {{ books.locked_until }}? Its figures will be editable again. This is recorded in the audit log.')"
+                                class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            Reopen year ending {{ books.locked_until }}
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Authentication Settings -->
         <div class="bg-white rounded-lg shadow">
             <div class="px-6 py-4 border-b border-gray-200">

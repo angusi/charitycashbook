@@ -235,6 +235,38 @@ class OAuthProviderService
     }
 
     /**
+     * Whether the identity provider has vouched for the email address in these claims.
+     *
+     * Only a verified email may be used to match an existing account or to grant
+     * access via a charity's allowed-email list; otherwise anyone able to set an
+     * arbitrary email on their provider account could take over accounts.
+     *
+     * - Google / generic OIDC: the standard `email_verified` claim must be true.
+     * - Microsoft: the `email` claim is not verified by Entra ID in multi-tenant apps,
+     *   so it is trusted only when the provider is locked to a single tenant
+     *   (the organisation vouches for its own directory) or when the optional
+     *   `xms_edov` (email domain owner verified) claim is true.
+     */
+    public function isEmailVerified(array $provider, array $claims): bool
+    {
+        $isTrue = static fn($value): bool => $value === true || $value === 1 || $value === '1'
+            || (is_string($value) && strtolower($value) === 'true');
+
+        return match ($provider['provider_type'] ?? null) {
+            'google', 'oidc' => $isTrue($claims['email_verified'] ?? false),
+            'microsoft' => self::isSingleTenant($provider['tenant_id'] ?? null) || $isTrue($claims['xms_edov'] ?? false),
+            default => false,
+        };
+    }
+
+    private static function isSingleTenant(?string $tenantId): bool
+    {
+        $tenantId = strtolower(trim((string) $tenantId));
+
+        return $tenantId !== '' && !in_array($tenantId, ['common', 'organizations', 'consumers'], true);
+    }
+
+    /**
      * Generate OAuth state token
      */
     public function generateState(): string

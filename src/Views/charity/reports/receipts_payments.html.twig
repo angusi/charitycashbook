@@ -14,6 +14,7 @@
 {% include 'components/report_date_picker.html.twig' %}
 
 <!-- Report -->
+{% set cols = report.fund_types %}
 <div class="bg-white rounded-lg shadow overflow-x-auto" id="report-content">
     <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
         <h2 class="text-lg font-medium text-gray-900">{{ charity.name }}</h2>
@@ -22,96 +23,51 @@
     </div>
 
     <div class="p-6">
-        <!-- Receipts Section -->
+        {% for section in [
+            {key: 'receipts', title: 'RECEIPTS', border: 'border-green-500', bg: 'bg-green-50', empty: 'No receipts in this period'},
+            {key: 'payments', title: 'PAYMENTS', border: 'border-red-500', bg: 'bg-red-50', empty: 'No payments in this period'},
+        ] %}
         <div class="mb-8">
-            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-green-500 pb-2 mb-4">RECEIPTS</h3>
+            <h3 class="text-lg font-bold text-gray-900 border-b-2 {{ section.border }} pb-2 mb-4">{{ section.title }}</h3>
             <table class="w-full">
                 <thead>
                     <tr class="text-sm text-gray-500">
                         <th class="text-left pb-2">Category</th>
-                        <th class="text-right pb-2">Unrestricted</th>
-                        <th class="text-right pb-2">Restricted</th>
+                        {% for type in cols %}
+                            <th class="text-right pb-2">{{ report.fund_type_labels[type] }}</th>
+                        {% endfor %}
                         <th class="text-right pb-2">Total</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for category in report.receipts %}
+                    {% for category in report[section.key] %}
                         <tr class="border-b border-gray-100">
                             <td class="py-2 text-sm text-gray-900">{{ category.name }}</td>
-                            <td class="py-2 text-sm text-right text-gray-900">£{{ category.unrestricted|number_format(2) }}</td>
-                            <td class="py-2 text-sm text-right text-gray-900">£{{ category.restricted|number_format(2) }}</td>
+                            {% for type in cols %}
+                                <td class="py-2 text-sm text-right text-gray-900">£{{ category.amounts[type]|default(0)|number_format(2) }}</td>
+                            {% endfor %}
                             <td class="py-2 text-sm text-right font-medium text-gray-900">£{{ category.total|number_format(2) }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="{{ cols|length + 2 }}" class="py-4 text-sm text-gray-500 text-center">{{ section.empty }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>
-                    {% if report.receipts is empty %}
-                    <tr>
-                        <td colspan="4" class="py-4 text-sm text-gray-500 text-center">No receipts in this period</td>
-                    </tr>
-                    {% endif %}
-                </tbody>
                 <tfoot>
-                    <tr class="bg-green-50">
-                        <td class="py-2 text-sm font-bold text-gray-900">Total Receipts</td>
-                        <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ (report.total_receipts_unrestricted|default(0))|number_format(2) }}</td>
-                        <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ (report.total_receipts_restricted|default(0))|number_format(2) }}</td>
-                        <td class="py-2 text-sm text-right font-bold text-green-700">£{{ (report.total_receipts|default(0))|number_format(2) }}</td>
+                    <tr class="{{ section.bg }}">
+                        <td class="py-2 text-sm font-bold text-gray-900">Total {{ section.key|capitalize }}</td>
+                        {% for type in cols %}
+                            <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ report.totals[section.key][type]|default(0)|number_format(2) }}</td>
+                        {% endfor %}
+                        <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ report.totals[section.key]['total']|number_format(2) }}</td>
                     </tr>
                 </tfoot>
             </table>
         </div>
+        {% endfor %}
 
-        <!-- Payments Section -->
-        <div class="mb-8">
-            <h3 class="text-lg font-bold text-gray-900 border-b-2 border-red-500 pb-2 mb-4">PAYMENTS</h3>
-            <table class="w-full">
-                <thead>
-                    <tr class="text-sm text-gray-500">
-                        <th class="text-left pb-2">Category</th>
-                        <th class="text-right pb-2">Unrestricted</th>
-                        <th class="text-right pb-2">Restricted</th>
-                        <th class="text-right pb-2">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for category in report.payments %}
-                        <tr class="border-b border-gray-100">
-                            <td class="py-2 text-sm text-gray-900">{{ category.name }}</td>
-                            <td class="py-2 text-sm text-right text-gray-900">£{{ category.unrestricted|number_format(2) }}</td>
-                            <td class="py-2 text-sm text-right text-gray-900">£{{ category.restricted|number_format(2) }}</td>
-                            <td class="py-2 text-sm text-right font-medium text-gray-900">£{{ category.total|number_format(2) }}</td>
-                        </tr>
-                    {% endfor %}
-                    {% if report.payments is empty %}
-                    <tr>
-                        <td colspan="4" class="py-4 text-sm text-gray-500 text-center">No payments in this period</td>
-                    </tr>
-                    {% endif %}
-                </tbody>
-                <tfoot>
-                    <tr class="bg-red-50">
-                        <td class="py-2 text-sm font-bold text-gray-900">Total Payments</td>
-                        <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ (report.total_payments_unrestricted|default(0))|number_format(2) }}</td>
-                        <td class="py-2 text-sm text-right font-bold text-gray-900">£{{ (report.total_payments_restricted|default(0))|number_format(2) }}</td>
-                        <td class="py-2 text-sm text-right font-bold text-red-700">£{{ (report.total_payments|default(0))|number_format(2) }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-
-        <!-- Summary -->
-        <div class="bg-blue-50 rounded-lg p-4">
-            <table class="w-full">
-                <tr>
-                    <td class="py-1 text-sm font-bold text-gray-900">Net Surplus/(Deficit)</td>
-                    <td class="py-1 text-sm text-right font-bold text-gray-900">£{{ ((report.total_receipts_unrestricted|default(0)) - (report.total_payments_unrestricted|default(0)))|number_format(2) }}</td>
-                    <td class="py-1 text-sm text-right font-bold text-gray-900">£{{ ((report.total_receipts_restricted|default(0)) - (report.total_payments_restricted|default(0)))|number_format(2) }}</td>
-                    <td class="py-1 text-sm text-right font-bold {{ ((report.total_receipts|default(0)) - (report.total_payments|default(0))) >= 0 ? 'text-green-700' : 'text-red-700' }}">
-                        £{{ ((report.total_receipts|default(0)) - (report.total_payments|default(0)))|number_format(2) }}
-                    </td>
-                </tr>
-            </table>
-        </div>
+        {% include 'charity/reports/_rp_balances.html.twig' %}
     </div>
 </div>
 

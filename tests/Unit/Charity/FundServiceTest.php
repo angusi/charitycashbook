@@ -133,7 +133,7 @@ class FundServiceTest extends TestCase
         $this->db->expects($this->once())
             ->method('insert')
             ->with('funds', $this->callback(function ($data) {
-                return $data['opening_balance'] === 0
+                return $data['opening_balance'] === '0.00'
                     && $data['opening_balance_date'] === null
                     && $data['display_order'] === 0
                     && $data['is_active'] === true;
@@ -154,7 +154,7 @@ class FundServiceTest extends TestCase
                 return $data['charity_id'] === 42
                     && $data['name'] === 'Restricted Fund'
                     && $data['fund_type'] === 'restricted'
-                    && $data['opening_balance'] === 1000.50
+                    && $data['opening_balance'] === '1000.50'
                     && $data['opening_balance_date'] === '2024-01-01'
                     && $data['display_order'] === 5;
             }))
@@ -241,7 +241,7 @@ class FundServiceTest extends TestCase
 
     public function testGetBalanceCalculatesCorrectly(): void
     {
-        $fund = ['id' => 1, 'opening_balance' => 1000.00];
+        $fund = ['id' => 1, 'charity_id' => 1, 'opening_balance' => 1000.00];
         $totals = ['receipts' => 500.00, 'payments' => 200.00];
 
         $this->db->method('queryOne')
@@ -257,7 +257,7 @@ class FundServiceTest extends TestCase
 
     public function testGetBalanceWithAsOfDate(): void
     {
-        $fund = ['id' => 1, 'opening_balance' => 500.00];
+        $fund = ['id' => 1, 'charity_id' => 1, 'opening_balance' => 500.00];
         $totals = ['receipts' => 100.00, 'payments' => 50.00];
 
         $this->db->expects($this->exactly(2))
@@ -278,7 +278,7 @@ class FundServiceTest extends TestCase
 
     public function testGetBalanceWithNegativeBalance(): void
     {
-        $fund = ['id' => 1, 'opening_balance' => 100.00];
+        $fund = ['id' => 1, 'charity_id' => 1, 'opening_balance' => 100.00];
         $totals = ['receipts' => 50.00, 'payments' => 300.00];
 
         $this->db->method('queryOne')
@@ -291,7 +291,7 @@ class FundServiceTest extends TestCase
 
     public function testGetBalanceWithZeroOpeningBalance(): void
     {
-        $fund = ['id' => 1, 'opening_balance' => 0];
+        $fund = ['id' => 1, 'charity_id' => 1, 'opening_balance' => 0];
         $totals = ['receipts' => 1000.00, 'payments' => 400.00];
 
         $this->db->method('queryOne')
@@ -319,8 +319,8 @@ class FundServiceTest extends TestCase
     public function testGetAllBalancesIncludesBalanceForEachFund(): void
     {
         $funds = [
-            ['id' => 1, 'name' => 'Fund A', 'opening_balance' => 100.00],
-            ['id' => 2, 'name' => 'Fund B', 'opening_balance' => 200.00],
+            ['id' => 1, 'charity_id' => 1, 'is_active' => 1, 'name' => 'Fund A', 'opening_balance' => 100.00],
+            ['id' => 2, 'charity_id' => 1, 'is_active' => 1, 'name' => 'Fund B', 'opening_balance' => 200.00],
         ];
 
         $this->db->method('query')->willReturn($funds);
@@ -329,7 +329,7 @@ class FundServiceTest extends TestCase
             ->willReturnCallback(function ($sql, $params) {
                 if (str_contains($sql, 'funds')) {
                     $fundId = $params[0];
-                    return ['id' => $fundId, 'opening_balance' => $fundId * 100];
+                    return ['id' => $fundId, 'charity_id' => 1, 'opening_balance' => $fundId * 100];
                 }
                 return ['receipts' => 50.00, 'payments' => 25.00];
             });
@@ -344,7 +344,7 @@ class FundServiceTest extends TestCase
 
     public function testGetAllBalancesPassesAsOfDate(): void
     {
-        $funds = [['id' => 1, 'name' => 'Fund', 'opening_balance' => 100.00]];
+        $funds = [['id' => 1, 'charity_id' => 1, 'is_active' => 1, 'name' => 'Fund', 'opening_balance' => 100.00]];
 
         $this->db->method('query')->willReturn($funds);
 
@@ -353,7 +353,7 @@ class FundServiceTest extends TestCase
         $this->db->method('queryOne')
             ->willReturnCallback(function ($sql, $params) use (&$asOfDatePassed) {
                 if (str_contains($sql, 'funds')) {
-                    return ['id' => 1, 'opening_balance' => 100.00];
+                    return ['id' => 1, 'charity_id' => 1, 'opening_balance' => 100.00];
                 }
                 if (in_array('2024-12-31', $params, true)) {
                     $asOfDatePassed = true;

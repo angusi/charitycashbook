@@ -237,7 +237,7 @@ class DonorService
     /**
      * Update just the address fields on a donor (for syncing from member record)
      */
-    public function updateAddress(int $donorId, array $address): void
+    public function updateAddress(int $donorId, int $charityId, array $address): void
     {
         $this->db->execute(
             "UPDATE donors SET
@@ -245,13 +245,14 @@ class DonorService
                 address_line2 = ?,
                 address_city = ?,
                 address_postcode = ?
-             WHERE id = ?",
+             WHERE id = ? AND charity_id = ?",
             [
                 !empty($address['address_line1']) ? $address['address_line1'] : null,
                 !empty($address['address_line2']) ? $address['address_line2'] : null,
                 !empty($address['address_city']) ? $address['address_city'] : null,
                 !empty($address['address_postcode']) ? $address['address_postcode'] : null,
                 $donorId,
+                $charityId,
             ]
         );
     }
@@ -335,16 +336,27 @@ class DonorService
     }
 
     /**
-     * Check if donor has valid declaration for a specific date
+     * Check if donor has a declaration covering a donation made on a specific date
+     *
+     * A declaration covers donations from its start date until it is withdrawn. If it
+     * also covers past donations, it covers donations back to covers_past_from_date
+     * (or, if not given, the 4 years HMRC allows before the declaration was made).
+     * This is the single implementation used across the app.
      */
     public function hasValidDeclaration(int $donorId, string $date): bool
     {
         $count = $this->db->queryValue(
             "SELECT COUNT(*) FROM declarations 
              WHERE donor_id = ? 
-             AND start_date <= ?
+             AND (
+                 start_date <= ?
+                 OR (
+                     covers_past_donations = TRUE
+                     AND ? >= COALESCE(covers_past_from_date, DATE_SUB(start_date, INTERVAL 4 YEAR))
+                 )
+             )
              AND (withdrawn_date IS NULL OR withdrawn_date >= ?)",
-            [$donorId, $date, $date]
+            [$donorId, $date, $date, $date]
         );
 
         return $count > 0;
@@ -434,7 +446,7 @@ class DonorService
             "SELECT id, transaction_date, has_oneoff_declaration, giftaid_status
              FROM transactions 
              WHERE donor_id = ? AND charity_id = ? AND is_deleted = FALSE 
-             AND giftaid_status NOT IN ('claimed', 'not_applicable', 'gasds')",
+             AND giftaid_status NOT IN ('claimed', 'not_applicable', 'gasds', 'excluded')",
             [$donorId, $charityId]
         );
 

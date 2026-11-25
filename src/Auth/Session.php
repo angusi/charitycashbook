@@ -16,6 +16,7 @@ class Session
     private array $charitySessions;
     private string $createdAt;
     private string $lastActiveAt;
+    private string $authenticatedAt;
 
     public function __construct(array $data)
     {
@@ -26,6 +27,7 @@ class Session
         $this->charitySessions = json_decode($data['charity_sessions'] ?? '{}', true);
         $this->createdAt = $data['created_at'] ?? '';
         $this->lastActiveAt = $data['last_active_at'] ?? '';
+        $this->authenticatedAt = $data['authenticated_at'] ?? '';
     }
 
     public function getId(): int
@@ -71,5 +73,13 @@ class Session
     public function getLastActiveAt(): string
     {
         return $this->lastActiveAt;
+    }
+
+    /**
+     * When the user last proved their identity via OAuth for this session
+     */
+    public function getAuthenticatedAt(): string
+    {
+        return $this->authenticatedAt;
     }
 }

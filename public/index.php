@@ -32,6 +32,7 @@ use CharityCashbook\Core\Middleware\CharitySessionMiddleware;
 use CharityCashbook\Core\Middleware\SuperAdminMiddleware;
 use CharityCashbook\Core\Middleware\CsrfMiddleware;
 use CharityCashbook\Core\Middleware\DebugToolbarMiddleware;
+use CharityCashbook\Core\Middleware\SecurityHeadersMiddleware;
 use Slim\Factory\AppFactory;
 use Slim\Views\Twig;
 use Slim\Views\TwigMiddleware;
@@ -43,6 +44,22 @@ $config = require __DIR__ . '/../config/config.php';
 
 // Set timezone
 date_default_timezone_set($config['app']['timezone']);
+
+// Only these reverse proxies may set X-Forwarded-For for logged client IPs
+\CharityCashbook\Core\ClientIp::configure($config['app']['trusted_proxies'] ?? []);
+
+// Harden the PHP session cookie (used for CSRF tokens, OAuth state, flash messages and
+// re-authentication context). This must happen before anything calls session_start().
+$appUrlIsHttps = str_starts_with(strtolower((string) ($config['app']['url'] ?? '')), 'https://');
+ini_set('session.use_strict_mode', '1');
+ini_set('session.use_only_cookies', '1');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $appUrlIsHttps || !empty($_SERVER['HTTPS']),
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 
 // Create container
 $container = new Container();
@@ -120,7 +137,8 @@ $container->set(TransactionService::class, fn($c) => new TransactionService(
     $c->get(Database::class),
     $c->get(Logger::class),
     $c->get(CategoryService::class),
-    $c->get(AuditService::class)
+    $c->get(AuditService::class),
+    $c->get(DonorService::class)
 ));
 
 $container->set(DonorService::class, fn($c) => new DonorService(
@@ -154,7 +172,8 @@ $container->set(\CharityCashbook\Charity\CashBookService::class, fn($c) => new \
 $container->set(ReportService::class, fn($c) => new ReportService(
     $c->get(Database::class),
     $c->get(FundService::class),
-    $c->get(CategoryService::class)
+    $c->get(CategoryService::class),
+    $c->get(\CharityCashbook\Charity\CashBookService::class)
 ));
 
 $container->set(PermissionService::class, fn($c) => new PermissionService(
@@ -260,6 +279,11 @@ $container->set(ServiceMetricsService::class, fn($c) => new ServiceMetricsServic
     $c->get(Database::class)
 ));
 
+$container->set(\CharityCashbook\ServiceAdmin\UserAdminService::class, fn($c) => new \CharityCashbook\ServiceAdmin\UserAdminService(
+    $c->get(DatabaseInterface::class),
+    $c->get(Logger::class)
+));
+
 // PrivacyService
 $container->set(PrivacyService::class, fn($c) => new PrivacyService(
     $c->get(DatabaseInterface::class),
@@ -271,12 +295,46 @@ $container->set(PrivacyService::class, fn($c) => new PrivacyService(
 AppFactory::setContainer($container);
 $app = AppFactory::create();
 
-// Add error middleware with custom error handler
+// Create Twig view
+// Always use cache, but auto_reload in debug mode recompiles when templates change
+$twigCacheDir = $config['paths']['cache'] . '/twig';
+if (!is_dir($twigCacheDir)) {
+    @mkdir($twigCacheDir, 0775, true);
+    @chmod($config['paths']['cache'], 0775);
+    @chmod($twigCacheDir, 0775);
+}
+$twig = Twig::create($config['paths']['views'], [
+    'cache' => $twigCacheDir,
+    'auto_reload' => $debugMode,
+]);
+
+// Add global template variables
+$twig->getEnvironment()->addGlobal('app_name', $config['app']['name']);
+$twig->getEnvironment()->addGlobal('app_url', rtrim($config['app']['url'], '/'));
+$twig->getEnvironment()->addGlobal('csrf_token', CsrfMiddleware::getToken());
+$twig->getEnvironment()->addGlobal('debug_mode', $debugMode);
+
+// Add Twig middleware
+$app->add(TwigMiddleware::create($app, $twig));
+
+// Add debug toolbar middleware (only active in debug mode)
+if ($debugMode) {
+    $toolbar = $container->get(DebugToolbar::class);
+    $toolbar->mark('bootstrap_complete');
+    
+    $app->add(new DebugToolbarMiddleware($toolbar, $debugMode));
+}
+
+// Add CSRF middleware for state-changing requests
+$app->add(new CsrfMiddleware());
+
+// Add error middleware with custom error handler.
+// Slim runs the most recently added middleware first, so the error middleware is added
+// after the others: that way it also catches exceptions thrown by them (e.g. CSRF failures).
 $errorMiddleware = $app->addErrorMiddleware($debugMode, true, true);
 
 // Set custom error handler to log errors and show user-friendly messages
-// $twig is captured by reference and assigned after Twig is created below
-$twig = null;
+// ($twig was created above; it is captured by reference)
 $logger = $container->get(Logger::class);
 $errorMiddleware->setDefaultErrorHandler(function (
     \Psr\Http\Message\ServerRequestInterface $request,
@@ -352,38 +410,8 @@ $errorMiddleware->setDefaultErrorHandler(function (
     return $response->withStatus($statusCode)->withHeader('Content-Type', 'text/html');
 });
 
-// Create Twig view
-// Always use cache, but auto_reload in debug mode recompiles when templates change
-$twigCacheDir = $config['paths']['cache'] . '/twig';
-if (!is_dir($twigCacheDir)) {
-    @mkdir($twigCacheDir, 0775, true);
-    @chmod($config['paths']['cache'], 0775);
-    @chmod($twigCacheDir, 0775);
-}
-$twig = Twig::create($config['paths']['views'], [
-    'cache' => $twigCacheDir,
-    'auto_reload' => $debugMode,
-]);
-
-// Add global template variables
-$twig->getEnvironment()->addGlobal('app_name', $config['app']['name']);
-$twig->getEnvironment()->addGlobal('app_url', rtrim($config['app']['url'], '/'));
-$twig->getEnvironment()->addGlobal('csrf_token', CsrfMiddleware::getToken());
-$twig->getEnvironment()->addGlobal('debug_mode', $debugMode);
-
-// Add Twig middleware
-$app->add(TwigMiddleware::create($app, $twig));
-
-// Add debug toolbar middleware (only active in debug mode)
-if ($debugMode) {
-    $toolbar = $container->get(DebugToolbar::class);
-    $toolbar->mark('bootstrap_complete');
-    
-    $app->add(new DebugToolbarMiddleware($toolbar, $debugMode));
-}
-
-// Add CSRF middleware for state-changing requests
-$app->add(new CsrfMiddleware());
+// Security headers wrap every response, including error pages
+$app->add(new SecurityHeadersMiddleware());
 
 // Simple controller resolver that injects dependencies
 $controllerResolver = function (string $controllerClass) use ($container) {

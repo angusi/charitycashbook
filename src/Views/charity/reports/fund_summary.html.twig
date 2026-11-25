@@ -46,11 +46,11 @@
         
         {% if date_from %}
         <p class="text-xs text-gray-500 mt-2">
-            Showing activity from {{ date_from }} to {{ date_to }}. Clear "From Date" for cumulative balances.
+            Showing balances at the start of {{ date_from }} and the close of {{ date_to }}, with the activity in between. Clear "From Date" to start from each fund's opening balance.
         </p>
         {% else %}
         <p class="text-xs text-gray-500 mt-2">
-            Showing cumulative balances as of {{ date_to }}. Set "From Date" to see period-specific activity (to match R&P reports).
+            Showing each fund from its opening balance to {{ date_to }}. Set "From Date" to see a single period (this matches the R&P reports).
         </p>
         {% endif %}
     </form>
@@ -118,28 +118,20 @@
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fund</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">{{ date_from ? 'Opening (' ~ date_from ~ ')' : 'Opening balance' }}</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Receipts</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Payments</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Transfers In</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Transfers Out</th>
-                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Closing ({{ date_to }})</th>
             </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-            {% set total_receipts = 0 %}
-            {% set total_payments = 0 %}
-            {% set total_transfers_in = 0 %}
-            {% set total_transfers_out = 0 %}
-            {% set total_balance = 0 %}
             {% for fund in report.funds %}
-                {% set total_receipts = total_receipts + fund.receipts %}
-                {% set total_payments = total_payments + fund.payments %}
-                {% set total_transfers_in = total_transfers_in + fund.transfers_in %}
-                {% set total_transfers_out = total_transfers_out + fund.transfers_out %}
-                {% set total_balance = total_balance + fund.balance %}
                 <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ fund.name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ fund.name }}{{ fund.is_active ? '' : ' (inactive)' }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">{{ fund.fund_type }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">£{{ fund.opening|number_format(2) }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">£{{ fund.receipts|number_format(2) }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">£{{ fund.payments|number_format(2) }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">£{{ fund.transfers_in|number_format(2) }}</td>
@@ -148,7 +140,7 @@
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-gray-500">No funds found</td>
+                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">No funds found</td>
                 </tr>
             {% endfor %}
         </tbody>
@@ -156,11 +148,12 @@
             <tr class="font-semibold">
                 <td class="px-6 py-4 text-sm text-gray-900">Total</td>
                 <td class="px-6 py-4"></td>
-                <td class="px-6 py-4 text-sm text-right text-green-600">£{{ total_receipts|number_format(2) }}</td>
-                <td class="px-6 py-4 text-sm text-right text-red-600">£{{ total_payments|number_format(2) }}</td>
-                <td class="px-6 py-4 text-sm text-right text-blue-600">£{{ total_transfers_in|number_format(2) }}</td>
-                <td class="px-6 py-4 text-sm text-right text-blue-600">£{{ total_transfers_out|number_format(2) }}</td>
-                <td class="px-6 py-4 text-sm text-right text-gray-900">£{{ total_balance|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-gray-900">£{{ report.totals.total.opening|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-green-600">£{{ report.totals.total.receipts|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-red-600">£{{ report.totals.total.payments|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-blue-600">£{{ report.totals.total.transfers_in|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-blue-600">£{{ report.totals.total.transfers_out|number_format(2) }}</td>
+                <td class="px-6 py-4 text-sm text-right text-gray-900">£{{ report.totals.total.balance|number_format(2) }}</td>
             </tr>
         </tfoot>
     </table>

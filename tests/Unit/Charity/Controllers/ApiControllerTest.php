@@ -35,8 +35,8 @@ class ApiControllerTest extends TestCase
         $donorService = $this->createMock(DonorService::class);
         $donorService->method('search')
             ->willReturn([
-                ['id' => 1, 'display_name' => 'John Smith', 'has_active_declaration' => true],
-                ['id' => 2, 'display_name' => 'Jane Doe', 'has_active_declaration' => false],
+                ['id' => 1, 'name' => 'John Smith', 'has_active_declaration' => true],
+                ['id' => 2, 'name' => 'Jane Doe', 'has_active_declaration' => false],
             ]);
 
         $auditService = $this->createMock(AuditService::class);

@@ -37,14 +37,15 @@ class GiftAidController extends BaseController
         // Get pending corrections count
         $pendingCorrectionsCount = count($giftAidService->getPendingCorrections($charityId));
         
-        // Get current year GASDS status
-        // GASDS limit is £2,000 claim per year (= £8,000 in donations at 25%)
-        // Plus cannot exceed 10x your regular Gift Aid claims
+        // GASDS position for the current UK tax year, from donations in (non-cancelled) claims:
+        // up to £8,000 of small donations (£2,000 top-up), and no more than 10x the Gift Aid
+        // donations claimed in the same tax year
         $currentYear = $giftAidService->getFinancialYear(date('Y-m-d'));
-        $gasdsDonations = $giftAidService->getGasdsUsed($charityId, $currentYear);
-        $gasdsClaimed = $gasdsDonations * 0.25; // Convert to claim amount
-        $gasdsAbsoluteCap = 2000.00; // £2,000 max per year
-        $gasdsClaimRemaining = max(0, $gasdsAbsoluteCap - $gasdsClaimed);
+        $gasds = $giftAidService->gasdsTaxYearPosition($charityId, date('Y-m-d'));
+        $gasdsDonations = $gasds['gasds_donations'];
+        $gasdsClaimed = $gasds['gasds_claimed'];
+        $gasdsAbsoluteCap = $gasds['claim_cap'];
+        $gasdsClaimRemaining = round($gasds['donations_remaining'] * 0.25, 2);
         
         $view = Twig::fromRequest($request);
         return $view->render($response, 'charity/giftaid/index.html.twig', array_merge(
@@ -170,18 +171,14 @@ class GiftAidController extends BaseController
         
         $transactions = $giftAidService->getClaimTransactions($claimId, $charityId);
         
-        // Get corrections applied to this claim
+        // Corrections to earlier claims that are applied to this claim
         $underclaims = [];
         $overclaim_total = 0;
-        if ($claim['status'] === 'submitted') {
-            // For submitted claims, show corrections that were applied
-            $corrections = $giftAidService->getCorrectionsForClaim($claimId, $charityId);
-            foreach ($corrections as $c) {
-                if ($c['adjustment'] > 0) {
-                    $underclaims[] = $c;
-                } else {
-                    $overclaim_total += abs($c['adjustment']);
-                }
+        foreach ($giftAidService->getCorrectionsForClaim($claimId, $charityId) as $c) {
+            if ($c['adjustment'] > 0) {
+                $underclaims[] = $c;
+            } else {
+                $overclaim_total += abs((float) $c['adjustment']);
             }
         }
         
@@ -307,6 +304,22 @@ class GiftAidController extends BaseController
             $this->flash('success', 'Claim marked as submitted to HMRC.');
             return $this->redirect($response, "/charity/$charityId/giftaid/claims/$claimId");
             
+        } catch (ValidationException $e) {
+            $this->flash('error', implode(', ', $e->getErrors()));
+            return $this->redirect($response, "/charity/$charityId/giftaid/claims/$claimId");
+        }
+    }
+
+    public function cancelClaim(Request $request, Response $response, array $args): Response
+    {
+        $charityId = (int) $request->getAttribute('charity_id');
+        $userId = $request->getAttribute('user_id');
+        $claimId = (int) $args['id'];
+
+        try {
+            $this->get(GiftAidService::class)->cancelClaim($claimId, $charityId, $userId);
+            $this->flash('success', 'Draft claim cancelled. Its donations and corrections can go in another claim.');
+            return $this->redirect($response, "/charity/$charityId/giftaid/claims");
         } catch (ValidationException $e) {
             $this->flash('error', implode(', ', $e->getErrors()));
             return $this->redirect($response, "/charity/$charityId/giftaid/claims/$claimId");

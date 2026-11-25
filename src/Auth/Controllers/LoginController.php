@@ -132,7 +132,15 @@ class LoginController extends BaseController
     {
         $sessionManager = $this->get(SessionManager::class);
         $sessionManager->destroy();
-        
+
+        // Also discard the PHP session (CSRF token, OAuth state, re-auth context,
+        // recently-used identity) so nothing carries over to the next person
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        $_SESSION = [];
+        session_regenerate_id(true);
+
         $this->flash('success', 'You have been logged out');
         return $response
             ->withHeader('Location', '/login')
