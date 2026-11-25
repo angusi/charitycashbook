@@ -25,7 +25,7 @@ class GiftAidClaimTest extends TestCase
     private array $otherClaims = ['standard' => 0, 'gasds' => 0];
     private ?array $claim = null;
     private array $claimItemIds = [];
-    private array $appliedCorrections = ['under' => '0.00', 'over' => '0.00'];
+    private array $appliedCorrections = ['underclaimed' => '0.00', 'overclaimed' => '0.00'];
     private int $pendingCorrections = 0;
     private string $appliedAdjustments = '0.00';
 
@@ -248,7 +248,7 @@ class GiftAidClaimTest extends TestCase
     public function testCorrectionsAreIncludedInTheClaimTotal(): void
     {
         $this->tx(1, '100.00', '60.00');
-        $this->appliedCorrections = ['under' => '40.00', 'over' => '20.00'];
+        $this->appliedCorrections = ['underclaimed' => '40.00', 'overclaimed' => '20.00'];
 
         $this->service->createClaim(1, 1, '2026-04-06', '2026-06-30', [1]);
 

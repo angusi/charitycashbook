@@ -688,13 +688,13 @@ class GiftAidService
     {
         $corrections = $this->db->queryOne(
             "SELECT
-                COALESCE(SUM(CASE WHEN adjustment > 0 THEN adjustment ELSE 0 END), 0) as under,
-                COALESCE(SUM(CASE WHEN adjustment < 0 THEN -adjustment ELSE 0 END), 0) as over
+                COALESCE(SUM(CASE WHEN adjustment > 0 THEN adjustment ELSE 0 END), 0) as underclaimed,
+                COALESCE(SUM(CASE WHEN adjustment < 0 THEN -adjustment ELSE 0 END), 0) as overclaimed
              FROM giftaid_corrections WHERE applied_to_claim_id = ?",
             [$claimId]
         );
-        $under = Money::toPence($corrections['under'] ?? 0);
-        $over = Money::toPence($corrections['over'] ?? 0);
+        $under = Money::toPence($corrections['underclaimed'] ?? 0);
+        $over = Money::toPence($corrections['overclaimed'] ?? 0);
 
         return [
             'total_donations' => Money::fromPence($standardPence),

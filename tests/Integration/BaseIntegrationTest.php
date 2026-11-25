@@ -83,12 +83,18 @@ abstract class BaseIntegrationTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up test data in reverse dependency order
+        self::$db->execute("DELETE FROM giftaid_corrections WHERE 1=1");
+        self::$db->execute("DELETE FROM membership_dues WHERE 1=1");
+        self::$db->execute("DELETE FROM members WHERE 1=1");
+        self::$db->execute("DELETE FROM membership_types WHERE 1=1");
         self::$db->execute("DELETE FROM transaction_audit WHERE 1=1");
         self::$db->execute("DELETE FROM giftaid_claim_items WHERE 1=1");
         self::$db->execute("DELETE FROM transaction_cashbook_entries WHERE 1=1");
         self::$db->execute("DELETE FROM transaction_category_entries WHERE 1=1");
         self::$db->execute("DELETE FROM transaction_fund_entries WHERE 1=1");
         self::$db->execute("DELETE FROM transactions WHERE 1=1");
+        self::$db->execute("DELETE FROM cash_book_reconciliations WHERE 1=1");
+        self::$db->execute("DELETE FROM cash_books WHERE 1=1");
         self::$db->execute("DELETE FROM declarations WHERE 1=1");
         self::$db->execute("DELETE FROM donors WHERE 1=1");
         self::$db->execute("DELETE FROM giftaid_claims WHERE 1=1");

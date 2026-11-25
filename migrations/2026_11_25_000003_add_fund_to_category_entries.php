@@ -75,12 +75,15 @@ return [
                 continue;
             }
 
-            $rowTotals = [];
-            $rowSign = [];
+            // One row per category: several lines for the same category (e.g. left over from a
+            // rollback of this migration) are merged, so a single-category split stays exact
+            $signedByCategory = [];
             foreach ($categories as $c) {
-                $rowTotals[$c['id']] = abs(Money::toPence($c['amount']));
-                $rowSign[$c['id']] = Money::toPence($c['amount']) < 0 ? -1 : 1;
+                $categoryId = (int) $c['operational_category_id'];
+                $signedByCategory[$categoryId] = ($signedByCategory[$categoryId] ?? 0) + Money::toPence($c['amount']);
             }
+            $rowTotals = array_map('abs', $signedByCategory);
+            $rowSign = array_map(fn($p) => $p < 0 ? -1 : 1, $signedByCategory);
             $colTotals = [];
             foreach ($funds as $f) {
                 $colTotals[(int) $f['fund_id']] = abs(Money::toPence($f['amount']));
@@ -90,7 +93,7 @@ return [
             if (!$consistent) {
                 // Categories and funds disagree: allocate by fund weights and flag for review
                 $flagged[] = $transactionId;
-            } elseif (count($categories) > 1) {
+            } elseif (count($signedByCategory) > 1) {
                 $flagged[] = $transactionId;
             }
 
@@ -101,18 +104,18 @@ return [
                     $rowTotals
                 );
 
-            // Replace each category line with one line per fund
-            foreach ($categories as $c) {
-                $db->execute("DELETE FROM transaction_category_entries WHERE id = ?", [$c['id']]);
-                foreach ($matrix[$c['id']] as $fundId => $pence) {
+            // Replace the category lines with one line per category per fund
+            $db->execute("DELETE FROM transaction_category_entries WHERE transaction_id = ?", [$transactionId]);
+            foreach ($matrix as $categoryId => $byFund) {
+                foreach ($byFund as $fundId => $pence) {
                     if ($pence === 0) {
                         continue;
                     }
                     $db->insert('transaction_category_entries', [
                         'transaction_id' => $transactionId,
-                        'operational_category_id' => $c['operational_category_id'],
+                        'operational_category_id' => $categoryId,
                         'fund_id' => $fundId,
-                        'amount' => Money::fromPence($pence * $rowSign[$c['id']]),
+                        'amount' => Money::fromPence($pence * $rowSign[$categoryId]),
                     ]);
                 }
             }
